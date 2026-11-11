@@ -113,7 +113,7 @@ test('Minha Escala: voluntário vê próxima turma e salva disponibilidade do m�
  const volunteer=state.agendaVolunteer;
  expect(volunteer?.usuario).toBeTruthy();
  await page.goto(root);
- await page.locator('form[data-form=login] [name=lu]').fill(volunteer.usuario);
+ await page.locator('form[data-form=login] [name=lu]').fill(volunteer.email);
  await page.locator('form[data-form=login] [name=lp]').fill(volunteer.senha);
  await page.locator('form[data-form=login] button[type=submit]').click();
  const menu=page.locator('nav button[data-a=tab][data-tab=escala]');
