@@ -61,10 +61,10 @@ async function verifyStatic(){
    const text=remote.toString('utf8');
    assert(text.includes(ref+'.supabase.co')&&!text.includes('sb_secret_')&&!text.includes('eofoeijyfpptcktiqeah'));
   }
-  if(item==='index.html')assert(remote.toString('utf8').includes('Escala Kids · v1.2.3'));
-  if(item==='sw.js')assert(remote.toString('utf8').includes("escala-kids-v1.2.3-qa-invite-fix"));
+  if(item==='index.html')assert(remote.toString('utf8').includes('Escala Kids · v1.2.4'));
+  if(item==='sw.js')assert(remote.toString('utf8').includes("escala-kids-v1.2.4-qa-invite-fix"));
  }
- console.log('PROD_SMOKE_SITE_HASH_OK: v1.2.3 index/app/sw; config prod public; HTTP 200');
+ console.log('PROD_SMOKE_SITE_HASH_OK: v1.2.4 index/app/sw; config prod public; HTTP 200');
 }
 async function play(browserType,device,persona,invite,kind){
  const browser=await browserType.launch({headless:true});
@@ -137,10 +137,10 @@ async function verifyServiceWorker(){
      });
     });
     const names=await caches.keys();
-    return {oldPresent:names.includes(cacheName),v123:names.some(x=>x.startsWith('escala-kids-v1.2.3'))};
+    return {oldPresent:names.includes(cacheName),v123:names.some(x=>x.startsWith('escala-kids-v1.2.4'))};
   });
   assert.equal(result.oldPresent,false,'cache antigo continua presente');
-  assert.equal(result.v123,true,'cache v1.2.3 ausente');
+  assert.equal(result.v123,true,'cache v1.2.4 ausente');
   console.log('PROD_SMOKE_SW_OK: nova versão ativa e cache antigo eliminado');
  }finally{await context.close();await browser.close()}
 }
