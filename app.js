@@ -3,7 +3,7 @@
 // Funções de escala, check-in e crianças serão conectadas nas próximas fases.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle';
 import { config } from './config.js';
-import { CULTOS, firstMonth, monthDays, nextShift, validSlot, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.4';
+import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.4';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -494,11 +494,7 @@ async function handleForm(form) {
       const p=state.people.find(x=>x.id===pessoa_id);
       if(!p || p.status!=='ativo' || p.primeiro_acesso)throw new Error('Selecione uma pessoa ativa.');
       if(!validSlot(dia,culto))throw new Error('Confira o dia: domingo manhã/noite ou quarta-feira à noite.');
-      if(dia<firstMonth(0).slice(0,8)+'01' || dia<new Date().toLocaleDateString('en-CA')) {
-        // A validação definitiva de data e permissão é feita também pelo banco.
-        if(dia<new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(new Date().getDate()).padStart(2,'0'))
-          throw new Error('Escolha uma data atual ou futura.');
-      }
+      if(dia<isoLocal(new Date()))throw new Error('Escolha uma data atual ou futura.');
       if(!/^\d{2}:\d{2}$/.test(horario)||turma.length<2||turma.length>80||!Object.keys(FN).includes(funcao))
         throw new Error('Informe horário, turma e função válidos.');
       const {error}=await sb.from('escalas').upsert({pessoa_id,dia,culto,horario,turma,funcao},{onConflict:'pessoa_id,dia,culto'});
