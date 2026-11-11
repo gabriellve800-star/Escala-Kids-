@@ -383,17 +383,21 @@ async function gateway(action, args={}) {
   if(error) {
     const response=error.context;
     let msg='Não foi possível falar com o servidor. Tente novamente.';
+    let serverField='';
     if(response && typeof response.json==='function') {
       try {
         const value=await response.clone().json();
         msg=value?.error || 'O servidor respondeu com erro HTTP '+response.status+'.';
+        serverField=['usuario','nome','email','telefone','senha','codigo'].includes(value?.field)?value.field:'';
+        if (/^[a-f0-9-]{36}$/i.test(value?.request_id||'')) msg+=' (Protocolo: '+value.request_id.slice(0,8)+')';
       } catch {
         msg='O servidor respondeu com erro HTTP '+response.status+'.';
       }
     } else if(error.name==='FunctionsFetchError') {
       msg='Não foi possível alcançar o servidor. Confira a conexão e reabra o aplicativo.';
     }
-    throw new Error(msg);
+    const issue=new Error(msg);issue.field=serverField;
+    throw issue;
   }
   if(data?.error)throw new Error(data.error);
   return data;
@@ -463,6 +467,10 @@ async function handleForm(form) {
       await loadData();notify('Convite criado. Compartilhe o código ou QR.');
     }
   } catch(e) {
+    if (id==='signup' && e?.field) {
+      const campos={usuario:'su',nome:'sn',email:'se',telefone:'sf',senha:'sp',codigo:'sc'};
+      form.querySelector('[name="'+campos[e.field]+'"]')?.focus();
+    }
     notify(showError(e),true);
   } finally {
     state.busy=false;
