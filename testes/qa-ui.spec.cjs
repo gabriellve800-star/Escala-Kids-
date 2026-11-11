@@ -107,3 +107,23 @@ function ui(){return state.ui[platform()];}
    });
    expect(result).toBe('old-cache-removed');
   });
+
+
+test('Minha Escala: voluntário vê próxima turma e salva disponibilidade do mês seguinte',async({page})=>{
+ const volunteer=state.agendaVolunteer;
+ expect(volunteer?.usuario).toBeTruthy();
+ await page.goto(root);
+ await page.locator('form[data-form=login] [name=lu]').fill(volunteer.usuario);
+ await page.locator('form[data-form=login] [name=lp]').fill(volunteer.senha);
+ await page.locator('form[data-form=login] button[type=submit]').click();
+ await expect(page.locator('h2').filter({hasText:'Minha Escala'})).toBeVisible({timeout:30000});
+ await expect(page.locator('.agenda-next-card')).toContainText('Maternal',{timeout:30000});
+ const start=new Date(volunteer.day+'T12:00:00');
+ if(platform()==='iphone-webkit')start.setDate(start.getDate()+7);
+ const day=[start.getFullYear(),String(start.getMonth()+1).padStart(2,'0'),String(start.getDate()).padStart(2,'0')].join('-');
+ await page.locator('button[data-a=agenda-day][data-day="'+day+'"]').click();
+ const choice=page.locator('button[data-a=agenda-toggle][data-day="'+day+'"][data-culto=domingo_manha]');
+ await expect(choice).toHaveAttribute('aria-pressed','false');
+ await choice.click();
+ await expect(page.locator('button[data-a=agenda-toggle][data-day="'+day+'"][data-culto=domingo_manha]')).toHaveAttribute('aria-pressed','true',{timeout:30000});
+});
