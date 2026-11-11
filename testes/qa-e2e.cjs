@@ -315,7 +315,7 @@ async function cleanup(){
  assert.equal(leftovers.length,0,'resíduos em auth.users');
  const counts={};
  for(const table of ['perfis','convites','funcoes_pessoa','auditoria','escalas','disponibilidades']){
-   const col=table==='funcoes_pessoa'?'pessoa_id':'id';
+   const col=['funcoes_pessoa','disponibilidades'].includes(table)?'pessoa_id':'id';
    const resp=await svc.from(table).select(col,{count:'exact',head:true});
    check(null,resp.error,'contagem '+table);
    counts[table]=resp.count;
