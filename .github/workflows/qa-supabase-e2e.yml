@@ -1,0 +1,127 @@
+name: Escala Kids — QA isolado E2E
+on:
+  workflow_dispatch:
+  push:
+    branches: [qa/convites-20261111]
+    paths:
+      - ".github/workflows/qa-supabase-e2e.yml"
+      - "testes/**"
+      - "supabase/**"
+      - "app.js"
+      - "package.json"
+      - "package-lock.json"
+permissions:
+  contents: write
+concurrency:
+  group: escala-kids-qa-isolado
+  cancel-in-progress: false
+jobs:
+  homologacao:
+    name: Migrations, Edge real, JWT, Chrome e Safari
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.QA_SUPABASE_ACCESS_TOKEN }}
+      QA_SUPABASE_PROJECT_REF: ${{ secrets.QA_SUPABASE_PROJECT_REF }}
+      QA_SUPABASE_DB_PASSWORD: ${{ secrets.QA_SUPABASE_DB_PASSWORD }}
+      QA_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.QA_SUPABASE_PUBLISHABLE_KEY }}
+      QA_SUPABASE_SECRET_KEY: ${{ secrets.QA_SUPABASE_SECRET_KEY }}
+      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/convites-20261111
+      - name: Impedir produção e exigir cinco Secrets QA
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SUPABASE_ACCESS_TOKEN}" || -z "${QA_SUPABASE_PROJECT_REF}" || -z "${QA_SUPABASE_DB_PASSWORD}" || -z "${QA_SUPABASE_PUBLISHABLE_KEY}" || -z "${QA_SUPABASE_SECRET_KEY}" ]]; then
+            echo "::error::FALTAM_SECRETS_QA — configure os cinco Secrets na conta do GitHub. Nenhuma alteração foi executada."
+            exit 1
+          fi
+          if [[ ! "${QA_SUPABASE_PROJECT_REF}" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "::error::REF_QA_INVALIDA"
+            exit 1
+          fi
+          if [[ "${QA_SUPABASE_PROJECT_REF}" == "pntzfuxwkjreugxzovjj" || "${QA_SUPABASE_PROJECT_REF}" == "vvlutecvaaozbuhmsjxg" ]]; then
+            echo "::error::PROJETO_PRODUCAO_BLOQUEADO"
+            exit 1
+          fi
+          if [[ "${QA_SUPABASE_PUBLISHABLE_KEY}" != sb_publishable_* || "${QA_SUPABASE_SECRET_KEY}" != sb_secret_* ]]; then
+            echo "::error::CHAVES_QA_INVALIDAS"
+            exit 1
+          fi
+          echo "QA_SUPABASE_URL=https://${QA_SUPABASE_PROJECT_REF}.supabase.co" >> "$GITHUB_ENV"
+          echo "ESCALA_FUNCTION_URL=https://${QA_SUPABASE_PROJECT_REF}.supabase.co/functions/v1/kids-auth" >> "$GITHUB_ENV"
+          echo "PREFLIGHT_OK: destino distinto dos bancos atuais; credenciais nunca exibidas."
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Gerar e versionar package-lock (uma vez)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f package-lock.json ]]; then
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "qa: lockfile das dependências fixas"
+            git push origin HEAD:qa/convites-20261111
+          fi
+      - name: Instalar dependências do lockfile
+        id: dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Aplicar migrations exclusivamente no Supabase QA
+        id: database
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "$QA_SUPABASE_PROJECT_REF" --password "$QA_SUPABASE_DB_PASSWORD"
+          supabase db push --linked --yes
+          echo "MIGRATIONS_QA_APLICADAS"
+      - name: Implantar Edge Function somente no QA
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase secrets set "QA_TEST_ORIGIN=http://localhost:4173" --project-ref "$QA_SUPABASE_PROJECT_REF"
+          supabase functions deploy kids-auth --project-ref "$QA_SUPABASE_PROJECT_REF" --no-verify-jwt
+          echo "FUNCTION_DEPLOY_QA"
+      - name: Testes unitários e HTTP reais no QA
+        run: npm test
+      - name: Criar administrador sintético
+        id: qa_setup
+        run: npm run test:qa:setup
+      - name: Cadastro real, aprovação, recusa, JWT, negativos e concorrência
+        run: npm run test:qa:integration
+      - name: Construir front-end efêmero do QA e servir em localhost
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const ref=process.env.QA_SUPABASE_PROJECT_REF;
+          const key=process.env.QA_SUPABASE_PUBLISHABLE_KEY;
+          if(!/^[a-z0-9]{20}$/.test(ref)||!key.startsWith('sb_publishable_'))process.exit(1);
+          fs.writeFileSync('config.js','export const config = '+
+            JSON.stringify({supabaseUrl:'https://'+ref+'.supabase.co',publishableKey:key})+';\n');
+          NODE
+          python3 -m http.server 4173 --bind 127.0.0.1 >/dev/null 2>&1 &
+          for i in $(seq 1 25); do if curl -fsS http://localhost:4173/index.html >/dev/null; then exit 0; fi; sleep 1; done
+          exit 1
+      - name: Instalar Chrome e WebKit (iPhone/Safari emulado)
+        run: npx playwright install --with-deps chromium webkit
+      - name: Navegador real no runner — QR, código, offline, toque duplo, cache
+        run: npm run test:qa:browser
+      - name: Limite na mesma rede e resposta 429
+        run: npm run test:qa:rate
+      - name: Limpeza obrigatória com comprovação zero resíduos
+        if: ${{ always() && steps.dependencies.outcome == 'success' && steps.database.outcome == 'success' }}
+        run: npm run test:qa:cleanup
+      - name: Resumo de homologação
+        if: ${{ success() }}
+        run: echo "QA APROVADO no projeto de TESTE. Nenhuma alteração publicada na produção."
