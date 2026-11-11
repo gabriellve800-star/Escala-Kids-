@@ -147,9 +147,16 @@ async function verifyServiceWorker(){
 async function execution(){
  const pre=await counts();
  console.log('PROD_SMOKE_BASELINE '+JSON.stringify(pre));
- const s={prefix,baseline:pre,ids:[],invites:[]};save(s);
+ const s={prefix,baseline:pre,ids:[],invites:[],expectedEmails:[]};save(s);
  await verifyStatic();await verifyServiceWorker();
+
  const persona=data('admin');
+ const approved=data('qr'),refused=data('curto');
+ s.expectedEmails=[persona.email,approved.email,refused.email];
+ assert.equal(new Set(s.expectedEmails).size,3,'E-mails sintéticos repetidos');
+ const existing=(await users()).filter(u=>s.expectedEmails.includes(u.email));
+ assert.equal(existing.length,0,'Conta com identidade sintética já existente. Abortar antes de criar contas.');
+ save(s);
  const {data:au,error:err}=await admin.auth.admin.createUser({email:persona.email,password:persona.senha,email_confirm:true});
  check(err,'createUser admin');assert(au.user?.id);
  s.ids.push(au.user.id);save(s);
@@ -169,7 +176,6 @@ async function execution(){
   assert.equal((await call('check_invite',{codigo:inv.body.codigo_curto})).status,200);
   invites.push(inv.body);
  }
- const approved=data('qr'),refused=data('curto');
  await play(chromium,devices['Pixel 7'],approved,invites[0],'qr');
  const id1=await verifyProfile(approved,invites[0]);s.ids.push(id1);save(s);
  await verifyRls(approved,'pendente');
@@ -192,8 +198,11 @@ async function cleanup(){
   console.log('PROD_SMOKE_NO_STATE: nenhum registro criado nesta execução');
   return;
  }
- // Relacionar IDs exatos das contas deste run, incluindo possíveis criações antes de salvar estado.
- const generated=(await users()).filter(u=>u.email?.startsWith(s.prefix+'_'));
+ // Resolva IDs SOMENTE das três identidades que foram pré-registradas neste run.
+ // Os e-mails eram comprovadamente inexistentes antes da criação. Nunca limpar por prefixo.
+ const expected=new Set(s.expectedEmails||[]);
+ assert(expected.size>0,'Estado QA sem lista explícita de identidades; limpeza recusada por segurança');
+ const generated=(await users()).filter(u=>expected.has(u.email));
  const ids=[...new Set([...s.ids,...generated.map(x=>x.id)])];
  const adminProfiles=ids.length?await admin.from('perfis').select('id').in('id',ids).eq('perfil','administrador'):{data:[],error:null};
  check(adminProfiles.error,'admin test profiles');
@@ -212,7 +221,9 @@ async function cleanup(){
  if(inviteIds.length)check((await admin.from('convites').delete().in('id',inviteIds)).error,'delete ONLY invitation ids');
  if(ids.length)check((await admin.from('perfis').delete().in('id',ids)).error,'delete ONLY profile ids');
  for(const u of generated)check((await admin.auth.admin.deleteUser(u.id)).error,'delete ONLY Auth synthetic id');
- assert.equal((await users()).filter(u=>u.email?.startsWith(s.prefix+'_')).length,0,'Auth sintético residual');
+ assert.equal((await users()).filter(u=>expected.has(u.email)).length,0,'Auth de identidades criadas residual');
+ const unknown=(await users()).filter(u=>u.email?.startsWith(s.prefix+'_')&&!expected.has(u.email));
+ assert.equal(unknown.length,0,'Encontradas identidades não previstas; NÃO excluí-las automaticamente');
  for(const t of ['perfis','convites','auditoria','funcoes_pessoa']){
   const col=t==='funcoes_pessoa'?'pessoa_id':'id';
   if(!ids.length && !inviteIds.length)continue;
