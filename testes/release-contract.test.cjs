@@ -32,7 +32,9 @@ test('site candidato v1.2.3 tem service worker e cache coerentes',()=>{
 test('smoke público registra emails exatos previamente e limpa apenas IDs explícitos',()=>{
  assert.match(smoke,/expectedEmails/);
  assert.match(smoke,/expected\.has\(u\.email\)/);
- assert.doesNotMatch(smoke,/filter\(u=>u\.email\?\.startsWith/);
+ assert.match(smoke,/const generated=\(await users\(\)\)\.filter\(u=>expected\.has\(u\.email\)\)/);
+ assert.match(smoke,/const unknown=\(await users\(\)\)\.filter/);
+ assert.match(smoke,/NÃO excluí-las automaticamente/);
  assert.match(smoke,/\.delete\(\)\.in\('id',inviteIds\)/);
  assert.match(smoke,/\.delete\(\)\.in\('id',ids\)/);
  assert.doesNotMatch(smoke,/qa_limpar_limites|truncate\(/i);
