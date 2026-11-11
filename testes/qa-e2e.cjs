@@ -30,8 +30,9 @@ function record(msg){console.log('QA PASS: '+msg)}
 function next(s,postfix){
  s.counter=(s.counter||0)+1;save(s);
  const key=postfix||String(s.counter);
- const u=prefix+'_'+key;
- assert(u.length<=26,'nome de usuário sintético maior que 26');
+ // Usernames têm limite de 26 caracteres; preservar prefixo de QA e unicidade.
+ const u=(prefix+'_'+key).slice(0,26);
+ assert(u.length>=3&&u.length<=26,'nome de usuário sintético inválido');
  return {usuario:u,nome:'Pessoa Teste Automatizado',telefone:'(11) 98888-7777',
  email:prefix+'_'+key+'@example.com',senha:randomPass()};
 }
