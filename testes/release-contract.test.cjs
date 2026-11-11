@@ -22,11 +22,11 @@ test('função Edge tem mapeamento de erro e logs sanitizados',()=>{
  assert.match(sec,/weak_password/);
 });
 test('site candidato v1.2.4 tem service worker e cache coerentes',()=>{
- assert.match(html,/<title>Escala Kids · v1\.2\.3<\/title>/);
- assert.match(html,/app\.js\?v=1\.2\.3/);
- assert.match(sw,/app\.js\?v=1\.2\.3/);
- assert.match(sw,/escala-kids-v1\.2\.3/);
- assert.match(app,/v1\.2\.3/);
+ assert.match(html,/<title>Escala Kids · v1\.2\.4<\/title>/);
+ assert.match(html,/app\.js\?v=1\.2\.4/);
+ assert.match(sw,/app\.js\?v=1\.2\.4/);
+ assert.match(sw,/escala-kids-v1\.2\.4/);
+ assert.match(app,/v1\.2\.4/);
  assert.match(config,/pntzfuxwkjreugxzovjj\.supabase\.co/);
  assert.doesNotMatch(config,/sb_secret_|eofoeijyfpptcktiqeah/i);
 });
