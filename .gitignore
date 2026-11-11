@@ -1,0 +1,6 @@
+.prod-smoke-state.json
+node_modules/
+.env
+.env.*
+playwright-report/
+test-results/
