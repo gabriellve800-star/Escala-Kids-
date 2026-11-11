@@ -26,3 +26,14 @@ test('conta pendente não pode agir como gestor',()=>{
  assert.match(b,/pessoa\.status !== 'ativo'/);
  assert.match(f,/state\.profile\?\.status === 'ativo' && !state\.profile\.primeiro_acesso/);
 });
+
+test('erros do cadastro geram ID de correlação sem dados pessoais',()=>{
+ assert.match(b,/const requestId = crypto\.randomUUID\(\)/);
+ assert.match(b,/request_id:requestId/);
+ assert.match(b,/stage:'finalizar_cadastro'/);
+ assert.doesNotMatch(b,/message:\s*untrustedError\(e\)/);
+});
+test('a interface foca o campo apontado pelo servidor sem apagar formulário',()=>{
+ assert.match(f,/serverField=\['usuario','nome','email','telefone','senha','codigo'\]/);
+ assert.match(f,/form\.querySelector\('\[name="'\+campos\[e\.field\]\+'"\]'\)\?\.focus\(\)/);
+});
