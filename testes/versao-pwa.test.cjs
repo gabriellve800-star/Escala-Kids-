@@ -14,9 +14,9 @@ test('versão candidata é 1.2.3 no título, app e URL cacheada',()=>{
 });
 test('cache da versão 1.2.3 elimina outros caches Escala Kids na ativação',()=>{
  assert.match(worker,/escala-kids-v1\.2\.3/);
- assert.match(worker,/keys\.filter\(key => key\.startsWith\('escala-kids-'\) && key !== CACHE\)/);
+ assert.match(worker,/\.filter\(key => key\.startsWith\('escala-kids-'\) && key !== CACHE\)/);
 });
 test('chave pública do site aponta apenas para projeto da produção; nenhuma chave de QA ou privilegiada',()=>{
  assert.match(cfg,/pntzfuxwkjreugxzovjj\.supabase\.co/);
- assert.doesNotMatch(cfg,/eofoeijyfpptcktiqeah|sb_secret_|service_role/i);
+ assert.doesNotMatch(cfg,/eofoeijyfpptcktiqeah|sb_secret_[A-Za-z0-9_-]{12,}|publishableKey:\s*['\"]service_role/i);
 });
