@@ -100,7 +100,7 @@ export function leaderAgendaUI({rows=[],availability=[],people=[],labels={},esc}
   return '<h2>Escalas da equipe</h2><p class="mut">Organize os cultos e atribua as turmas aos voluntários.</p>'+
    '<section class="card agenda-panel"><h3>Adicionar escala</h3><form data-form="schedule">'+
    '<div class="field"><label for="agenda-person">Pessoa</label><select class="in" id="agenda-person" name="agenda-person" required>'+
-     '<option value="">Selecione um voluntário</option>'+candidates.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nome)+' · '+esc(labels[(p.perfil||'')])+'</option>').join('')+'</select></div>'+
+     '<option value="">Selecione um voluntário</option>'+candidates.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nome)+' · '+esc(({voluntario:'Voluntário',lider:'Líder',administrador:'Administrador'})[p.perfil]||'Equipe')+'</option>').join('')+'</select></div>'+
    '<div class="fieldgrid"><div class="field"><label for="agenda-date">Dia</label><input class="in" id="agenda-date" name="agenda-date" type="date" min="'+today+'" required></div>'+
    '<div class="field"><label for="agenda-time">Horário</label><input class="in" id="agenda-time" name="agenda-time" type="time" required></div></div>'+
    '<div class="field"><label for="agenda-culto">Culto</label><select class="in" id="agenda-culto" name="agenda-culto">'+
