@@ -222,8 +222,9 @@ async function integration(){
  s.ui={};
  for(const project of ['android-chrome','iphone-webkit']){
    s.ui[project]={};
-   s.ui[project].qr=await invite(s);
-   s.ui[project].short=await invite(s);
+   for(const kind of ['qr','short','weak','double','offline']){
+     s.ui[project][kind]=await invite(s);
+   }
  }
  save(s);
  record('convites para Playwright preparados (códigos não impressos)');
