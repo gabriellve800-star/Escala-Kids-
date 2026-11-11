@@ -117,6 +117,7 @@ async function rpc(name: string, values: Record<string, unknown>) {
   return data;
 }
 const untrustedError = (e: unknown) => e instanceof Error ? e.message : String(e);
+const safeErrorCode = (v: unknown) => String(v??'UNKNOWN').replace(/[^a-z0-9_]/gi,'').slice(0,48)||'UNKNOWN';
 
 Deno.serve(async (req) => {
   const requestId = crypto.randomUUID(); // Identificador aleatório, não revela dados pessoais.
@@ -195,9 +196,9 @@ Deno.serve(async (req) => {
           email, password: String(b.senha), email_confirm: true,
         });
         if (ae || !created.user) {
-          const code = String(ae?.code || 'AUTH_ERROR');
-          console.warn('escala_register_auth_error',{request_id:requestId,stage:'createUser',code,status:ae?.status||0});
+          const code = safeErrorCode(ae?.code || 'AUTH_ERROR');
           const mapped = mapCreateUserError(ae);
+          console.warn('escala_register_auth_error',{request_id:requestId,stage:'createUser',field:mapped.field||'geral',code,status:ae?.status||0});
           return err(mapped.message,mapped.status,{...(mapped.field?{field:mapped.field}:{}),request_id:requestId});
         }
         try {
@@ -210,15 +211,15 @@ Deno.serve(async (req) => {
           const info=untrustedError(e);
           const motivo=info.includes('perfis_usuario_key')?'USUARIO_DUPLICADO':
             info.includes('CONVITE_INVALIDO')?'CONVITE_INVALIDO':'ERRO_RPC';
-          console.warn('escala_register_database_error',{request_id:requestId,stage:'finalizar_cadastro',code:motivo});
+          console.warn('escala_register_database_error',{request_id:requestId,stage:'finalizar_cadastro',field:motivo==='USUARIO_DUPLICADO'?'usuario':motivo==='CONVITE_INVALIDO'?'codigo':'geral',code:motivo});
           // Reverter Auth E CONFERIR o resultado; evitar ocultar conta órfã.
           const { error: rollbackError } = await admin.auth.admin.deleteUser(created.user.id);
           const {data: remain} = rollbackError ? {data:null} :
             await admin.auth.admin.getUserById(created.user.id);
           if (rollbackError || remain?.user) {
             console.error('escala_register_rollback_failed',{
-              request_id:requestId,stage:'rollback',
-              code:rollbackError?.code || 'USUARIO_AINDA_EXISTE',
+              request_id:requestId,stage:'rollback',field:'geral',
+              code:safeErrorCode(rollbackError?.code || 'USUARIO_AINDA_EXISTE'),
               status:rollbackError?.status || 500,
             });
             return err('Falha de finalização. Contate o administrador antes de repetir o cadastro.',500,{request_id:requestId});
@@ -335,6 +336,9 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     const m = untrustedError(e);
+    const code = m.includes('SEM_PERMISSAO')?'SEM_PERMISSAO':m.includes('NAO_AUTENTICADO')?'NAO_AUTENTICADO':
+      m.includes('CADASTRO_NAO_PENDENTE')?'CADASTRO_NAO_PENDENTE':m.includes('CONVITE_INVALIDO')?'CONVITE_INVALIDO':'ERRO_INTERNO';
+    console.warn('escala_request_error',{request_id:requestId,stage:'request',field:'geral',code});
     // Não inclui detalhes técnicos internos para usuários finais.
     if (m.includes('SEM_PERMISSAO') || m.includes('NAO_AUTENTICADO')) return err('Sem permissão para esta ação.', 403);
     if (m.includes('CADASTRO_NAO_PENDENTE')) return err('Este cadastro não está pendente.', 409);
