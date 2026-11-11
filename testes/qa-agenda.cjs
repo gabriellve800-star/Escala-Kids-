@@ -41,6 +41,13 @@ async function create(p){
  assert(!visible.some(x=>x.pessoa_id===personA.id),'other volunteer availability leaked');
  const managerRows=check(await leader.c.from('disponibilidades').select('pessoa_id,dia,culto'),'manager read availability');
  assert(managerRows.some(x=>x.pessoa_id===personA.id),'manager must see volunteers availability');
+ const http=await fetch(url+'/functions/v1/kids-auth',{
+   method:'POST',headers:{'Content-Type':'application/json','Origin':'http://localhost:4173',apikey:pub},
+   body:JSON.stringify({action:'login',usuario:personA.usuario,senha:personA.senha})});
+ if(http.status!==200)throw Error('login username by Edge failed HTTP '+http.status);
+ const session=await http.json();
+ assert(session.access_token&&session.refresh_token,'tokens de login ausentes');
+ console.log('QA_AGENDA_USER_LOGIN_OK: login por usuário validado pela Edge sem imprimir credenciais');
  const shift={pessoa_id:personA.id,dia:target,culto:'domingo_manha',horario:'09:00',turma:'Maternal',funcao:'professor'};
  const forbidden=await personA.c.from('escalas').insert(shift);
  assert(forbidden.error,'Volunteer may not self assign');
@@ -59,7 +66,7 @@ async function create(p){
  // Manter uma escala fictícia para validar a interface real em Chrome e WebKit. O cleanup elimina via FK.
  check(await leader.c.from('escalas').insert(shift),'preparar escala para Playwright');
  const agendaState=JSON.parse(fs.readFileSync('.qa-state.json','utf8'));
- agendaState.agendaVolunteer={usuario:personA.usuario,senha:personA.senha,day:target};
+ agendaState.agendaVolunteer={usuario:personA.usuario,email:personA.email,senha:personA.senha,day:target};
  fs.writeFileSync('.qa-state.json',JSON.stringify(agendaState),{mode:0o600});
  console.log('QA_AGENDA_OK: voluntário só vê a sua; gestor publica; interface será verificada por Playwright.');
 })().catch(e=>{console.error('QA_AGENDA_FAILED '+String(e.message).replace(/zz_teste_[a-z0-9_]+/gi,'[test]'));process.exitCode=1;});
