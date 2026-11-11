@@ -1,0 +1,24 @@
+{
+  "name": "escala-kids-testes",
+  "private": true,
+  "version": "1.2.2-qa",
+  "scripts": {
+    "test": "node --test testes/*.test.cjs",
+    "test:unit": "node --test testes/validacoes.test.cjs testes/contratos.test.cjs",
+    "test:qa:setup": "node testes/qa-e2e.cjs setup",
+    "test:qa:integration": "node testes/qa-e2e.cjs integration",
+    "test:qa:rate": "node testes/qa-e2e.cjs rate",
+    "test:qa:cleanup": "node testes/qa-e2e.cjs cleanup",
+    "test:qa:browser": "playwright test testes/qa-ui.spec.cjs --config=testes/playwright.config.cjs",
+    "test:qa:verify-ui": "node testes/qa-e2e.cjs verify-ui"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.57.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

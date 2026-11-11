@@ -11,13 +11,25 @@ const PF = { administrador:'Administrador', lider:'Líder', voluntario:'Voluntá
 const cleanUsername = (s) => String(s || '').trim().toLowerCase();
 
 // Validação antes de enviar: informa o campo a corrigir.
+const emailValido = (email) => {
+  if (typeof email !== 'string' || email.length > 254) return false;
+  const pieces=email.split('@');
+  if (pieces.length!==2) return false;
+  const [local,host]=pieces;
+  if (!local || local.length>64 || local.startsWith('.') || local.endsWith('.') ||
+      local.includes('..') || !/^[a-z0-9._%+-]+$/i.test(local)) return false;
+  const labels=host.split('.');
+  return labels.length>=2 && labels.every(x=>x.length>0 && x.length<=63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(x)) && labels[labels.length-1].length>=2;
+};
+
 function erroCadastroLocal({usuario,nome,email,telefone,senha,codigo}) {
   if (!/^[a-z][a-z0-9._-]{2,25}$/.test(usuario))
     return {field:'su',message:'Nome de usuário: use 3 a 26 caracteres, começando com letra, sem espaços ou acentos.'};
   if (nome.length<3 || nome.length>120)
     return {field:'sn',message:'Nome completo: informe de 3 a 120 caracteres.'};
-  if (email.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    return {field:'se',message:'E-mail inválido. Confira o endereço, incluindo o trecho depois do @.'};
+  if (!emailValido(email))
+    return {field:'se',message:'E-mail inválido. Confira o endereço e use até 64 caracteres antes do @.'};
   const tel=telefone.replace(/[^\d+]/g,'');
   if (!/^\+?\d{10,15}$/.test(tel))
     return {field:'sf',message:'Telefone inválido. Informe DDD e número, por exemplo (11) 99999-9999.'};
@@ -122,7 +134,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.2</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.3</small>');
   }
   $('#seg').innerHTML=state.user && canWork()
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -383,17 +395,21 @@ async function gateway(action, args={}) {
   if(error) {
     const response=error.context;
     let msg='Não foi possível falar com o servidor. Tente novamente.';
+    let serverField='';
     if(response && typeof response.json==='function') {
       try {
         const value=await response.clone().json();
         msg=value?.error || 'O servidor respondeu com erro HTTP '+response.status+'.';
+        serverField=['usuario','nome','email','telefone','senha','codigo'].includes(value?.field)?value.field:'';
+        if (/^[a-f0-9-]{36}$/i.test(value?.request_id||'')) msg+=' (Protocolo: '+value.request_id.slice(0,8)+')';
       } catch {
         msg='O servidor respondeu com erro HTTP '+response.status+'.';
       }
     } else if(error.name==='FunctionsFetchError') {
       msg='Não foi possível alcançar o servidor. Confira a conexão e reabra o aplicativo.';
     }
-    throw new Error(msg);
+    const issue=new Error(msg);issue.field=serverField;
+    throw issue;
   }
   if(data?.error)throw new Error(data.error);
   return data;
@@ -463,6 +479,10 @@ async function handleForm(form) {
       await loadData();notify('Convite criado. Compartilhe o código ou QR.');
     }
   } catch(e) {
+    if (id==='signup' && e?.field) {
+      const campos={usuario:'su',nome:'sn',email:'se',telefone:'sf',senha:'sp',codigo:'sc'};
+      form.querySelector('[name="'+campos[e.field]+'"]')?.focus();
+    }
     notify(showError(e),true);
   } finally {
     state.busy=false;

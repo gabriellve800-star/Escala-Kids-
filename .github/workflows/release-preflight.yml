@@ -1,0 +1,31 @@
+name: Escala Kids — verificações estáticas antes de liberar release
+on:
+  push:
+    branches: [release/escala-kids-v1.2.3]
+    paths:
+      - "testes/**"
+      - ".github/workflows/**"
+      - "app.js"
+      - "index.html"
+      - "sw.js"
+      - "config.js"
+      - "supabase/**"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pre-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sintaxe e contratos de release sem tocar em produção
+        run: |
+          node --check testes/prod-smoke.cjs
+          node --check testes/release-contract.test.cjs
+          node --test testes/release-contract.test.cjs
