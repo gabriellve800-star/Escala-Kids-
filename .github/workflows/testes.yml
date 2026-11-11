@@ -1,0 +1,21 @@
+name: Auditoria Escala Kids
+on:
+  push:
+    branches: [main, 'qa/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Executar testes sem credenciais pessoais
+        env:
+          ESCALA_FUNCTION_URL: https://pntzfuxwkjreugxzovjj.supabase.co/functions/v1/kids-auth
+        run: npm test
