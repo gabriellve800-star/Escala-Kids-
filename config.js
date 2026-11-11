@@ -3,5 +3,4 @@
 export const config = {
   supabaseUrl: 'https://pntzfuxwkjreugxzovjj.supabase.co',
   publishableKey: 'sb_publishable_CeN5Z0hWjjSUymIvnRRASQ_U7LRFSMi',
-  loginDomain: 'login.escala-kids.invalid',
 };
