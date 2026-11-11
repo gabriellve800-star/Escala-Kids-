@@ -150,7 +150,7 @@ async function volunteerAgendaSmoke(persona,day){
  const page=await context.newPage();
  try{
   await page.goto(site,{waitUntil:'domcontentloaded'});
-  await page.locator('form[data-form=login] [name=lu]').fill(persona.usuario);
+  await page.locator('form[data-form=login] [name=lu]').fill(persona.email);
   await page.locator('form[data-form=login] [name=lp]').fill(persona.senha);
   await page.locator('form[data-form=login] button[type=submit]').click();
   await expect(page.locator('h2').filter({hasText:'Minha Escala'})).toBeVisible({timeout:30000});
