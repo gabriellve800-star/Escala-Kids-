@@ -129,21 +129,28 @@ Deno.serve(async (req) => {
           (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'desconhecido';
         const permitido = await rpc('limitar_cadastro',{
           p_chave:await sha256(`convite-check:${aparentIp}:${rateSalt}`),
+          p_max:120,
         });
         if (!permitido) return err('Muitas tentativas. Tente mais tarde.',429);
         const codigo=normalizeInvite(b.codigo);
         if (!codigo) return err('Código inválido. Digite ABC-123 ou use o QR Code.',400);
+        const limiteCodigo=await rpc('limitar_cadastro',{
+          p_chave:await sha256(`convite-check-codigo:${aparentIp}:${codigo}:${rateSalt}`),
+          p_max:60,
+        });
+        if(!limiteCodigo) return err('Muitas validações deste convite. Tente mais tarde.',429);
         const valid=await lookupInvite(codigo);
         if (!valid) return err('Código inválido, expirado ou já utilizado.',400);
         return json({ok:true,valid:true});
       }
       case 'register': {
-        // Defesa em camadas: 20 tentativas/hora por IP aparente.
+        // Rede compartilhada: até 80 tentativas de cadastro por hora por IP, com limite por convite.
         // Para produção pública use também WAF/CAPTCHA, pois cabeçalhos de proxy podem variar.
         const aparentIp = req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip') ||
           (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'desconhecido';
         const permitido = await rpc('limitar_cadastro', {
           p_chave: await sha256(`cadastro:${aparentIp}:${rateSalt}`),
+          p_max:80,
         });
         if (!permitido) return err('Muitas tentativas. Tente novamente mais tarde.', 429);
         // Só este fluxo cria contas. Nenhum cliente tem permissão de autoaprovar.
@@ -157,6 +164,12 @@ Deno.serve(async (req) => {
           console.warn('escala_register_validation_rejected',{field:erro.field});
           return err(erro.message,422);
         }
+        // Protege convites repetidos sem bloquear toda uma igreja no mesmo Wi-Fi.
+        const permitidoCodigo=await rpc('limitar_cadastro',{
+          p_chave:await sha256(`cadastro-convite:${aparentIp}:${codigo}:${rateSalt}`),
+          p_max:60,
+        });
+        if (!permitidoCodigo) return err('Muitas tentativas com este convite. Peça outro código.',429);
         // A finalização faz nova validação atômica no banco, sob bloqueio de linha.
         const c = await lookupInvite(codigo);
         if (!c) {
@@ -205,8 +218,14 @@ Deno.serve(async (req) => {
           (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'desconhecido';
         const permitido = await rpc('limitar_cadastro', {
           p_chave: await sha256(`login:${aparentIp}:${rateSalt}`),
+          p_max:120,
         });
         if (!permitido) return err('Muitas tentativas de login. Tente mais tarde.', 429);
+        const permitidoUsuario=await rpc('limitar_cadastro',{
+          p_chave:await sha256(`login-usuario:${usuario}:${rateSalt}`),
+          p_max:10,
+        });
+        if(!permitidoUsuario) return err('Muitas tentativas para este usuário. Tente mais tarde.',429);
         const { data: perfil } = await admin.from('perfis').select('id').eq('usuario', usuario).maybeSingle();
         if (!perfil?.id) return err('Usuário ou senha incorretos.', 401);
         const { data: authRecord, error: userError } = await admin.auth.admin.getUserById(perfil.id);
