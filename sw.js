@@ -1,7 +1,7 @@
 // Escala Kids — PWA. Atualização com confirmação do usuário para evitar perda de formulários.
 // Ao publicar uma versão nova, altere este identificador para substituir o cache anterior.
-const CACHE = 'escala-kids-v1.2.3-qa-invite-fix';
-const ASSETS = ['./','./index.html','./styles.css','./app.js?v=1.2.3','./config.js','./qrcode.min.js','./icon.svg','./icon-192.png','./icon-512.png','./manifest.webmanifest'];
+const CACHE = 'escala-kids-v1.2.4-agenda-voluntarios';
+const ASSETS = ['./','./index.html','./styles.css?v=1.2.4','./app.js?v=1.2.4','./agenda.js?v=1.2.4','./config.js','./qrcode.min.js','./icon.svg','./icon-192.png','./icon-512.png','./manifest.webmanifest'];
 const allowed = new Set(ASSETS.map(path => new URL(path, self.registration.scope).href));
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
