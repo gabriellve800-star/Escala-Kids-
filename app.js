@@ -101,6 +101,10 @@ function renderToast() {
   d.textContent=state.toast;$('#app').append(d);
 }
 function renderHeader() {
+  const title=$('#app header h1');
+  if(title && !title.querySelector('[data-app-version]')) {
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.1</small>');
+  }
   $('#seg').innerHTML=state.user && canWork()
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
 }
@@ -358,8 +362,18 @@ function showError(error) {
 async function gateway(action, args={}) {
   const {data,error}=await sb.functions.invoke('kids-auth',{body:{action,...args}});
   if(error) {
-    let msg='Falha ao falar com o servidor. Verifique sua conexão.';
-    try {const value=await error.context?.json(); if(value?.error) msg=value.error;} catch {/* offline */}
+    const response=error.context;
+    let msg='Não foi possível falar com o servidor. Tente novamente.';
+    if(response && typeof response.json==='function') {
+      try {
+        const value=await response.clone().json();
+        msg=value?.error || 'O servidor respondeu com erro HTTP '+response.status+'.';
+      } catch {
+        msg='O servidor respondeu com erro HTTP '+response.status+'.';
+      }
+    } else if(error.name==='FunctionsFetchError') {
+      msg='Não foi possível alcançar o servidor. Confira a conexão e reabra o aplicativo.';
+    }
     throw new Error(msg);
   }
   if(data?.error)throw new Error(data.error);
