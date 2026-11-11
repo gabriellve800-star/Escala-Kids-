@@ -56,5 +56,10 @@ async function create(p){
  check(await personA.c.from('disponibilidades').delete().match(payload),'self delete availability');
  const left=check(await svc.from('disponibilidades').select('pessoa_id').eq('pessoa_id',personA.id),'availability removed');
  assert.equal(left.length,0);
- console.log('QA_AGENDA_OK: mês seguinte; 2 domingos; RLS não permite escrita/leitura alheia; liderança publica/remove escala; voluntário só vê a sua.');
+ // Manter uma escala fictícia para validar a interface real em Chrome e WebKit. O cleanup elimina via FK.
+ check(await leader.c.from('escalas').insert(shift),'preparar escala para Playwright');
+ const agendaState=JSON.parse(fs.readFileSync('.qa-state.json','utf8'));
+ agendaState.agendaVolunteer={usuario:personA.usuario,senha:personA.senha,day:target};
+ fs.writeFileSync('.qa-state.json',JSON.stringify(agendaState),{mode:0o600});
+ console.log('QA_AGENDA_OK: voluntário só vê a sua; gestor publica; interface será verificada por Playwright.');
 })().catch(e=>{console.error('QA_AGENDA_FAILED '+String(e.message).replace(/zz_teste_[a-z0-9_]+/gi,'[test]'));process.exitCode=1;});
