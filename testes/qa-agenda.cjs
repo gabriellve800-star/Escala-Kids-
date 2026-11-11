@@ -18,7 +18,7 @@ function check(result,stage){if(result.error)throw Error(stage+': '+String(resul
 async function create(p){
  const auth=check(await svc.auth.admin.createUser({email:p.email,password:p.senha,email_confirm:true}),'createAuth');
  p.id=auth.user.id;
- check(await svc.from('perfis').insert({id:p.id,usuario:p.usuario,nome:'QA Agenda '+p.perfil,status:'ativo',perfil:p.perfil,primeiro_acesso:false}),'createProfile');
+ check(await svc.from('perfis').insert({id:p.id,usuario:p.usuario,nome:'QA Agenda '+p.perfil,telefone:'+5511999997777',status:'ativo',perfil:p.perfil,primeiro_acesso:false}),'createProfile');
  const c=client();check(await c.auth.signInWithPassword({email:p.email,password:p.senha}),'login');
  p.c=c;return p;
 }
@@ -34,7 +34,7 @@ async function create(p){
  assert(other.error,'RLS should reject writing other volunteer availability');
  const wrongDay=await personA.c.from('disponibilidades').insert({pessoa_id:personA.id,dia:target,culto:'quarta_noite'});
  assert(wrongDay.error,'CHECK should reject Wednesday slot on Sunday');
- const wrongMonth=await personA.c.from('disponibilidades').insert({pessoa_id:personA.id,dia:a.monthDays(a.firstMonth()).find(x=>a.slotsForDate(x).length),culto:'domingo_manha'});
+ const wrongMonth=await personA.c.from('disponibilidades').insert({pessoa_id:personA.id,dia:a.monthDays(a.firstMonth()).find(x=>a.slotsForDate(x).includes('domingo_manha')),culto:'domingo_manha'});
  assert(wrongMonth.error,'RLS should reject current month availability');
  const {data:visible,error:visError}=await personB.c.from('disponibilidades').select('pessoa_id,dia,culto');
  if(visError)throw visError;
