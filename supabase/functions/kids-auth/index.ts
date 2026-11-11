@@ -35,6 +35,18 @@ const funcoesValidas = (fs: unknown) => Array.isArray(fs) && fs.every(
 );
 
 // Retorna só o campo reprovado; jamais registrar dados pessoais em logs.
+const emailValido = (email) => {
+  if (typeof email !== 'string' || email.length > 254) return false;
+  const pieces=email.split('@');
+  if (pieces.length!==2) return false;
+  const [local,host]=pieces;
+  if (!local || local.length>64 || local.startsWith('.') || local.endsWith('.') ||
+      local.includes('..') || !/^[a-z0-9._%+-]+$/i.test(local)) return false;
+  const labels=host.split('.');
+  return labels.length>=2 && labels.every(x=>x.length>0 && x.length<=63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(x)) && labels[labels.length-1].length>=2;
+};
+
 function erroCadastro(b: Record<string,unknown>) {
   const usuario=String(b.usuario??'').trim().toLowerCase();
   const nome=String(b.nome??'').trim().replace(/\s+/g,' ');
@@ -42,7 +54,7 @@ function erroCadastro(b: Record<string,unknown>) {
   const telefone=String(b.telefone??'').replace(/[^\d+]/g,'');
   if(!usuarioValido(usuario)) return {field:'usuario',message:'Nome de usuário: use 3 a 26 caracteres, começando com letra, sem espaços ou acentos.'};
   if(nome.length<3 || nome.length>120) return {field:'nome',message:'Nome completo: informe de 3 a 120 caracteres.'};
-  if(email.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return {field:'email',message:'E-mail inválido. Confira o endereço, incluindo o trecho depois do @.'};
+  if(!emailValido(email)) return {field:'email',message:'E-mail inválido. Confira o endereço e use até 64 caracteres antes do @.'};
   if(!/^\+?\d{10,15}$/.test(telefone)) return {field:'telefone',message:'Telefone inválido. Informe DDD e número, por exemplo (11) 99999-9999.'};
   if(!senhaValida(b.senha)) return {field:'senha',message:'Senha: use de 10 a 128 caracteres com letra maiúscula, minúscula, número e símbolo.'};
   if(!normalizeInvite(b.codigo)) return {field:'codigo',message:'Convite inválido. Valide um código ABC-123 ou use o QR Code.'};
