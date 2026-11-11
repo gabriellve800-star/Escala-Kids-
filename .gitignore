@@ -1,0 +1,8 @@
+node_modules/
+.qa-state.json
+.qa-results/
+test-results/
+playwright-report/
+.env
+.env.*
+!*.example
