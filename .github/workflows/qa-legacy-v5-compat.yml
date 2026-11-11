@@ -1,0 +1,72 @@
+name: QA — prova de rollback da função v5
+on:
+  push:
+    branches: [qa/convites-20261111]
+    paths:
+      - ".github/workflows/qa-legacy-v5-compat.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: escala-kids-qa-isolado
+  cancel-in-progress: false
+jobs:
+  legacy:
+    name: Função antiga v5 contra migrations novas, cadastro e rollback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.QA_SUPABASE_ACCESS_TOKEN }}
+      QA_SUPABASE_PROJECT_REF: eofoeijyfpptcktiqeah
+      QA_SUPABASE_DB_PASSWORD: ${{ secrets.QA_SUPABASE_DB_PASSWORD }}
+      QA_SUPABASE_PUBLISHABLE_KEY: sb_publishable_IDSj5r_nLQQjxfgcwRWoYg_f9XAFp7q
+      QA_SUPABASE_SECRET_KEY: ${{ secrets.QA_SUPABASE_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Travar projeto alvo (nunca produção) e verificar segredos
+        id: preflight
+        run: |
+          set -euo pipefail
+          test "$QA_SUPABASE_PROJECT_REF" = "eofoeijyfpptcktiqeah"
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$QA_SUPABASE_DB_PASSWORD"
+          [[ "$QA_SUPABASE_SECRET_KEY" == sb_secret_* ]]
+          echo "V5_QA_ONLY"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Instalar dependências fixadas
+        run: npm ci --no-audit --no-fund
+      - name: Garantir migrações QA (inclui limitador novo sem remover antigo)
+        id: migrations
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "$QA_SUPABASE_PROJECT_REF" --password "$QA_SUPABASE_DB_PASSWORD"
+          supabase db push --linked --yes
+          echo "QA_SCHEMA_READY"
+      - name: Implantar cópia exata da função v5 da produção NO QA
+        id: legacy
+        run: |
+          set -euo pipefail
+          cp auditoria/rollback/kids-auth-v5-index.ts supabase/functions/kids-auth/index.ts
+          supabase functions deploy kids-auth --project-ref "$QA_SUPABASE_PROJECT_REF" --no-verify-jwt --yes
+          echo "LEGACY_V5_QA_DEPLOYED"
+      - name: Testar convite QR e curto, cadastro pendente, aprovação e login reais pela v5
+        id: test
+        run: node auditoria/legacy-v5-compat.cjs
+      - name: Limpeza redundante, somente contas geradas por esta execução
+        if: ${{ always() && steps.migrations.outcome == 'success' }}
+        run: node auditoria/legacy-v5-compat.cjs cleanup
+      - name: Restaurar candidato v1.2.3 NO QA, inclusive após falha
+        if: ${{ always() && steps.legacy.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          git restore --source=HEAD -- supabase/functions/kids-auth/index.ts
+          supabase functions deploy kids-auth --project-ref "$QA_SUPABASE_PROJECT_REF" --no-verify-jwt --yes
+          echo "QA_NEW_FUNCTION_RESTORED"
+      - name: Relatório final do teste legado
+        if: ${{ success() }}
+        run: echo "LEGACY_V5_COMPAT_PASS: migration nova preservou cadastro, QR, aprovação e login da v5; QA restaurado; zero resíduos."
