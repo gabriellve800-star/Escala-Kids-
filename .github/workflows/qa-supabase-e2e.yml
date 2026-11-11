@@ -22,9 +22,9 @@ jobs:
     timeout-minutes: 45
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.QA_SUPABASE_ACCESS_TOKEN }}
-      QA_SUPABASE_PROJECT_REF: ${{ secrets.QA_SUPABASE_PROJECT_REF }}
+      QA_SUPABASE_PROJECT_REF: eofoeijyfpptcktiqeah
       QA_SUPABASE_DB_PASSWORD: ${{ secrets.QA_SUPABASE_DB_PASSWORD }}
-      QA_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.QA_SUPABASE_PUBLISHABLE_KEY }}
+      QA_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_IDSj5r_nLQQjxfgcwRWoYg_f9XAFp7q'
       QA_SUPABASE_SECRET_KEY: ${{ secrets.QA_SUPABASE_SECRET_KEY }}
       GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
     steps:
@@ -36,8 +36,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${SUPABASE_ACCESS_TOKEN}" || -z "${QA_SUPABASE_PROJECT_REF}" || -z "${QA_SUPABASE_DB_PASSWORD}" || -z "${QA_SUPABASE_PUBLISHABLE_KEY}" || -z "${QA_SUPABASE_SECRET_KEY}" ]]; then
-            echo "::error::FALTAM_SECRETS_QA — configure os cinco Secrets na conta do GitHub. Nenhuma alteração foi executada."
+          if [[ -z "${SUPABASE_ACCESS_TOKEN}" || -z "${QA_SUPABASE_DB_PASSWORD}" || -z "${QA_SUPABASE_SECRET_KEY}" ]]; then
+            echo "::error::FALTAM_SECRETS_QA — configure os três Secrets privados QA no GitHub. Nenhuma alteração foi executada."
             exit 1
           fi
           if [[ ! "${QA_SUPABASE_PROJECT_REF}" =~ ^[a-z0-9]{20}$ ]]; then
