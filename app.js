@@ -383,7 +383,7 @@ async function loadData() {
   state.availability=state.agendaError?[]:agendaRes[1].data||[];
   const target=firstMonth(1);
   if(!state.selectedAvailabilityDate || state.selectedAvailabilityDate<target || state.selectedAvailabilityDate>=firstMonth(2))
-    state.selectedAvailabilityDate=monthDays(target).find(d=>validSlot(d,'domingo_manha')||validSlot(d,'quarta_noite'))||target;
+    state.selectedAvailabilityDate=monthDays(target).find(d=>validSlot(d,'domingo_manha'))||monthDays(target).find(d=>validSlot(d,'quarta_noite'))||target;
   state.drafts={};render();
 }
 async function boot() {
@@ -586,7 +586,7 @@ async function actionClick(b) {
   }
   if(a==='tab'){
     state.tab=b.dataset.tab;state.currentInvitation=null;
-    if (state.tab === 'aprov' && canApprove()) await loadData();
+    if ((state.tab === 'aprov' && canApprove()) || state.tab==='escala') await loadData();
     else render();
     $('#main').scrollTop=0;return;
   }
