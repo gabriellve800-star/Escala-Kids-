@@ -24,36 +24,35 @@ async function codePage(page,code){
  await page.locator('form[data-form=checkinvite] button[type=submit]').click();
  await expect(page.locator('form[data-form=signup]')).toBeVisible({timeout:20000});
 }
-for(const name of ['android-chrome','iphone-webkit']){
- test.describe(name,()=>{
-  test.beforeEach(({},testInfo)=>test.skip(testInfo.project.name!==name,'Executar apenas no dispositivo correspondente'));
-  const ui=state.ui[name];
+// Os mesmos seis casos executam em cada projeto Playwright; sem testes duplicados ignorados.
+function platform(){return test.info().project.name;}
+function ui(){return state.ui[platform()];}
   test('QR longo: inscrição real no navegador',async({page})=>{
+   // A URL contém o QR antes do app iniciar; não há corrida entre replaceState e reload.
+   // O token não entra na URL impressa pelo test runner.
+   await page.addInitScript(code=>{
+      history.replaceState(null,'','?convite='+encodeURIComponent(code));
+   },ui().qr.codigo);
    await page.goto(root);
-   // A navegação de QR é gerada no navegador sem pôr o token no log do Playwright.
-   await page.evaluate(code=>{
-      history.replaceState({},'', '?convite='+encodeURIComponent(code));
-      location.reload();
-   },ui.qr.codigo);
    await expect(page.locator('form[data-form=signup]')).toBeVisible({timeout:20000});
-   const p=person(name);
+   const p=person(platform());
    await fill(page,p);
    await page.locator('form[data-form=signup] button[type=submit]').click();
    await expect(page.getByText('Cadastro enviado',{exact:true})).toBeVisible({timeout:30000});
   });
   test('código curto: inscrição real no navegador',async({page})=>{
-   await codePage(page,ui.short.codigo_curto);
-   const p=person(name);
-   p.usuario=state.prefix+'_uc'+letter[name];
+   await codePage(page,ui().short.codigo_curto);
+   const p=person(platform());
+   p.usuario=state.prefix+'_uc'+letter[platform()];
    p.email=p.usuario+'@example.com';
    await fill(page,p);
    await page.locator('form[data-form=signup] button[type=submit]').click();
    await expect(page.getByText('Cadastro enviado',{exact:true})).toBeVisible({timeout:30000});
   });
   test('senha fraca mantém todos os campos',async({page})=>{
-   await codePage(page,ui.weak.codigo_curto);
-   const p=person(name);
-   p.usuario=state.prefix+'_uw'+letter[name];
+   await codePage(page,ui().weak.codigo_curto);
+   const p=person(platform());
+   p.usuario=state.prefix+'_uw'+letter[platform()];
    p.email=p.usuario+'@example.com';
    await fill(page,p);
    await page.locator('[name=sp]').fill('fraca123456');
@@ -67,17 +66,17 @@ for(const name of ['android-chrome','iphone-webkit']){
    await expect(page.getByText('Cadastro enviado',{exact:true})).toBeVisible({timeout:30000});
   });
   test('toque duplo não cria duas inscrições',async({page})=>{
-   await codePage(page,ui.double.codigo_curto);
-   const p=person(name);
-   p.usuario=state.prefix+'_ud'+letter[name];p.email=p.usuario+'@example.com';
+   await codePage(page,ui().double.codigo_curto);
+   const p=person(platform());
+   p.usuario=state.prefix+'_ud'+letter[platform()];p.email=p.usuario+'@example.com';
    await fill(page,p);
    await page.locator('form[data-form=signup] button[type=submit]').evaluate(btn=>{btn.click();btn.click()});
    await expect(page.getByText('Cadastro enviado',{exact:true})).toBeVisible({timeout:30000});
   });
   test('internet offline preserva dados e permite reenvio',async({page,context})=>{
-   await codePage(page,ui.offline.codigo_curto);
-   const p=person(name);
-   p.usuario=state.prefix+'_uo'+letter[name];p.email=p.usuario+'@example.com';
+   await codePage(page,ui().offline.codigo_curto);
+   const p=person(platform());
+   p.usuario=state.prefix+'_uo'+letter[platform()];p.email=p.usuario+'@example.com';
    await fill(page,p);
    await context.setOffline(true);
    await page.locator('form[data-form=signup] button[type=submit]').click();
@@ -108,5 +107,3 @@ for(const name of ['android-chrome','iphone-webkit']){
    });
    expect(result).toBe('old-cache-removed');
   });
- });
-}
