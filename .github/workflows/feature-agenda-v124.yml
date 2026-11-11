@@ -1,0 +1,32 @@
+name: Escala Kids — QA estático agenda v1.2.4
+on:
+  push:
+    branches: [feature/escala-voluntarios-v124]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  agenda-static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validar JavaScript e módulos do calendário
+        run: |
+          set -euo pipefail
+          node --check agenda.js
+          node --check testes/prod-smoke.cjs
+          node --check testes/agenda-v124.test.cjs
+      - name: Testes unitários, contrato e migração somente aditiva
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm test
+          test "$(find supabase/migrations -name '*.sql' | wc -l)" -eq 2
+          ! grep -ri 'qa_limpar_limites' supabase/migrations
+          ! grep -ri 'drop table\\|delete from auth.users' supabase/migrations
+          grep -q 'v1.2.4' index.html
+          grep -q 'agenda.js?v=1.2.4' sw.js
