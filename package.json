@@ -1,0 +1,11 @@
+{
+  "name": "escala-kids-auditoria",
+  "private": true,
+  "version": "1.2.2-qa",
+  "scripts": {
+    "test": "node --test testes/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
