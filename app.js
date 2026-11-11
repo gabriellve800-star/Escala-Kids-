@@ -9,6 +9,25 @@ const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
 const FN = { professor:'Professor', auxiliar:'Auxiliar', lanche:'Lanche', portaria:'Portaria' };
 const PF = { administrador:'Administrador', lider:'Líder', voluntario:'Voluntário' };
 const cleanUsername = (s) => String(s || '').trim().toLowerCase();
+
+// Validação antes de enviar: informa o campo a corrigir.
+function erroCadastroLocal({usuario,nome,email,telefone,senha,codigo}) {
+  if (!/^[a-z][a-z0-9._-]{2,25}$/.test(usuario))
+    return {field:'su',message:'Nome de usuário: use 3 a 26 caracteres, começando com letra, sem espaços ou acentos.'};
+  if (nome.length<3 || nome.length>120)
+    return {field:'sn',message:'Nome completo: informe de 3 a 120 caracteres.'};
+  if (email.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return {field:'se',message:'E-mail inválido. Confira o endereço, incluindo o trecho depois do @.'};
+  const tel=telefone.replace(/[^\d+]/g,'');
+  if (!/^\+?\d{10,15}$/.test(tel))
+    return {field:'sf',message:'Telefone inválido. Informe DDD e número, por exemplo (11) 99999-9999.'};
+  if (!(senha.length>=10 && senha.length<=128 && /[a-z]/.test(senha) && /[A-Z]/.test(senha) && /\d/.test(senha) && /[^A-Za-z0-9]/.test(senha)))
+    return {field:'sp',message:'Senha: use de 10 a 128 caracteres com letra maiúscula, minúscula, número e símbolo.'};
+  if (!normalizeInvite(codigo))
+    return {field:'sc',message:'Convite inválido. Valide um código ABC-123 ou use o QR Code.'};
+  return null;
+}
+
 const normalizeInvite = (value) => {
   const code = String(value || '').trim().toUpperCase();
   if (/^[A-Z]{3}[- ]?\d{3}$/.test(code)) return code.slice(0,3) + '-' + code.replace(/\D/g,'').slice(-3);
@@ -103,7 +122,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.1</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.2</small>');
   }
   $('#seg').innerHTML=state.user && canWork()
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -141,10 +160,10 @@ function authUI() {
       <div class="card" style="margin:14px 0;background:var(--mint)"><strong style="color:var(--mintink)">Convite confirmado</strong> <button type="button" class="btn ghost" style="float:right;padding:8px 11px;width:auto" data-a="changeinvite">Trocar código</button></div>
       <form data-form="signup">
         ${field('sn','Nome completo','text','autocomplete="name" required minlength="3" maxlength="120"')}
-        ${field('su','Nome de usuário','text','autocomplete="username" required pattern="[A-Za-z][A-Za-z0-9._-]{2,25}"')}
-        ${field('se','E-mail pessoal','email','autocomplete="email" required maxlength="254"')}
+        ${field('su','Nome de usuário','text','autocomplete="username" required pattern="[A-Za-z][A-Za-z0-9._-]{2,25}" title="De 3 a 26 caracteres: comece com letra; use apenas letras, números, ponto, traço ou _" placeholder="exemplo.joao"')}
+        ${field('se','E-mail pessoal','email','autocomplete="email" required maxlength="254" placeholder="seuemail@exemplo.com"')}
         ${field('sf','Telefone com DDD','tel','autocomplete="tel" required inputmode="tel" placeholder="(11) 99999-9999"')}
-        ${field('sp','Senha','password','autocomplete="new-password" required minlength="10"')}
+        ${field('sp','Senha','password','autocomplete="new-password" required minlength="10" maxlength="128" title="De 10 a 128 caracteres, com letra maiúscula, minúscula, número e símbolo"')}
         <p class="helper">A senha precisa ter 10 ou mais caracteres, com maiúscula, minúscula, número e símbolo. Seus dados só serão liberados aos responsáveis autorizados.</p>
         <div style="height:12px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Enviar solicitação para aprovação</button>
       </form><div style="height:8px"></div><button class="btn ghost" data-a="login">Voltar</button>`;
@@ -416,11 +435,19 @@ async function handleForm(form) {
       notify('Convite validado. Complete seu cadastro.');
     } else if(id==='signup') {
       if (!state.inviteVerified || !state.invitation) throw new Error('Valide seu convite primeiro.');
-      await gateway('register',{
-        usuario:cleanUsername(val('su')),nome:val('sn'),email:val('se').toLowerCase(),telefone:val('sf'),senha:val('sp'),codigo:state.invitation,
-      });
+      const payload={
+        usuario:cleanUsername(val('su')),nome:val('sn').replace(/\s+/g,' '),
+        email:val('se').toLowerCase(),telefone:val('sf'),senha:val('sp'),codigo:state.invitation,
+      };
+      const erro=erroCadastroLocal(payload);
+      if (erro) {
+        form.querySelector('[name="'+erro.field+'"]')?.focus();
+        throw new Error(erro.message);
+      }
+      const resultado=await gateway('register',payload);
+      if (!resultado?.ok || resultado?.status!=='pendente') throw new Error('O servidor não confirmou a solicitação. Tente novamente.');
       state.auth='wait';state.invitation='';state.inviteVerified=false;
-      notify('Cadastro enviado para aprovação.');
+      notify('Solicitação enviada com sucesso. Aguarde a aprovação da liderança.');
     } else if(id==='password') {
       if(val('p1')!==val('p2')) throw new Error('As senhas precisam ser iguais.');
       await gateway('change_password',{senha:val('p1')});
@@ -435,7 +462,16 @@ async function handleForm(form) {
       state.currentInvitation={code:data.codigo_curto,link:inviteLink(data.codigo_curto),qrLink:inviteLink(data.codigo)};
       await loadData();notify('Convite criado. Compartilhe o código ou QR.');
     }
-  } catch(e) {notify(showError(e),true);} finally {state.busy=false;render();}
+  } catch(e) {
+    notify(showError(e),true);
+  } finally {
+    state.busy=false;
+    // Não apagar cadastro após erro: permite corrigir o campo sem redigitar tudo.
+    if (id==='signup' && state.auth==='signup' && state.inviteVerified) {
+      const submit=form.querySelector('button[type="submit"]');
+      if (submit) submit.disabled=false;
+    } else render();
+  }
 }
 async function confirmAction() {
   const m=state.modal;state.modal=null;
