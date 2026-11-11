@@ -33,7 +33,7 @@ test('cartões mostram dados efetivos e não inventam escala',async()=>{
  assert.match(ui,/Quando posso servir/);
  const next=a.firstMonth(1);const sundays=a.monthDays(next).filter(d=>a.slotsForDate(d).includes('domingo_manha'));
  assert.equal(sundays.length>=4,true);
- const published=a.volunteerAgendaUI({rows:[{pessoa_id:'x',dia:next,culto:'domingo_manha',horario:'09:00',turma:'Maternal',funcao:'professor'}],availability:[],selectedDate:day,labels:{professor:'Professor'},esc:x=>String(x)});
+ const published=a.volunteerAgendaUI({rows:[{pessoa_id:'x',dia:sundays[0],culto:'domingo_manha',horario:'09:00',turma:'Maternal',funcao:'professor'}],availability:[],selectedDate:day,labels:{professor:'Professor'},esc:x=>String(x)});
  assert.match(published,/turma|Turma/i);
 });
 test('RLS: somente usuário ativo edita a própria disponibilidade no mês seguinte',()=>{
