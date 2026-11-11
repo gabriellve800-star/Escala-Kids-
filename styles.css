@@ -1,0 +1,93 @@
+
+/* ============ ESTILOS ============
+   Tokens de design em :root (cores, fontes). Modo escuro redefine os mesmos tokens.
+   Paleta: azul vivo (--pri), amarelo (--sun), menta (--mint), rosa suave (--rose), tinta azul-marinho (--ink).
+   Fontes: Bricolage Grotesque (títulos) e Figtree (texto).
+   Regra visual: raios de borda diferentes por hierarquia, nada de emojis na interface. */
+:root{--bg:#F4F5F9;--card:#fff;--ink:#14213D;--mut:#5B6478;--pri:#2B4EFF;--on:#fff;--sun:#FFC93C;--sunink:#3A2A00;--mint:#CDEFE0;--mintink:#0F4A36;--rose:#FFE1DA;--roseink:#7A2A16;--line:#E3E6EF;color-scheme:light;--hd:'Bricolage Grotesque','Trebuchet MS',sans-serif;--bd:'Figtree',system-ui,sans-serif;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0F1424;--card:#182038;--ink:#EEF1FA;--mut:#9AA3BA;--pri:#8FA2FF;--on:#0F1424;--mint:#1D3B34;--mintink:#BDEBD6;--rose:#42241E;--roseink:#FFC9BC;--line:#263050;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0F1424;--card:#182038;--ink:#EEF1FA;--mut:#9AA3BA;--pri:#8FA2FF;--on:#0F1424;--mint:#1D3B34;--mintink:#BDEBD6;--rose:#42241E;--roseink:#FFC9BC;--line:#263050;color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.45 var(--bd);-webkit-font-purpose:none}
+#app{max-width:440px;margin:0 auto;height:100%;display:flex;flex-direction:column;position:relative}
+header{padding:14px 20px 6px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{font:800 22px/1 var(--hd);margin:0;letter-spacing:-.02em}
+h2{font:700 26px/1.1 var(--hd);margin:6px 0 4px;letter-spacing:-.02em}
+h3{font:700 17px/1.2 var(--hd);margin:0}
+p{margin:0}
+.mut{color:var(--mut);font-size:14px}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{border:0;background:none;color:var(--mut);font:600 13px var(--bd);padding:7px 13px;border-radius:999px;cursor:pointer}
+.seg button.on{background:var(--ink);color:var(--bg)}
+main{flex:1;overflow-y:auto;padding:8px 20px 24px}
+nav{display:flex;background:var(--card);border-top:1px solid var(--line);padding:6px 8px 8px}
+nav button{flex:1;border:0;background:none;color:var(--mut);font:500 12px var(--bd);display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer;border-radius:14px}
+nav button.on{color:var(--pri);font-weight:600}
+svg.i{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+button:focus-visible{outline:3px solid var(--pri);outline-offset:2px}
+/* Card do próximo turno: 3 cantos grandes e 1 pequeno. É a assinatura visual do app. */
+.hero{background:var(--pri);color:var(--on);border-radius:32px 32px 32px 8px;padding:22px;margin:10px 0 18px;position:relative;overflow:hidden}
+.hero .day{font:800 84px/.85 var(--hd);letter-spacing:-.04em}
+.hero .mo{font:700 20px var(--hd);margin-left:6px}
+.hero p{opacity:.92}
+.btn{border:0;border-radius:999px;font:700 16px var(--hd);padding:14px 22px;cursor:pointer;width:100%}
+.btn.sun{background:var(--sun);color:var(--sunink);margin-top:18px}
+.btn.pri{background:var(--pri);color:var(--on)}
+.btn.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px;margin-bottom:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.tag{display:inline-block;font:600 12px var(--bd);padding:3px 10px;border-radius:999px;background:var(--mint);color:var(--mintink)}
+.tag.warn{background:var(--rose);color:var(--roseink)}
+.tag.sun{background:var(--sun);color:var(--sunink)}
+/* Interruptor de disponibilidade (liga/desliga) */
+.tog{width:52px;height:30px;border-radius:999px;border:0;background:var(--line);position:relative;cursor:pointer;flex:none;transition:background .2s}
+.tog::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .2s}
+.tog.on{background:var(--pri)}.tog.on::after{transform:translateX(22px)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;margin:0 -20px;padding-left:20px;padding-right:20px}
+/* Seletor horizontal de cultos (tela do líder) */
+.chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:18px 18px 18px 6px;padding:8px 14px;cursor:pointer;text-align:left;font:600 14px/1.2 var(--bd)}
+.chip small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}.chip.on small{color:inherit;opacity:.75}
+.wk{font:700 14px var(--hd);color:var(--mut);margin:18px 0 8px}
+.badges{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.badge{text-align:center;font:600 13px/1.25 var(--bd)}
+.badge .b{width:64px;height:64px;margin:0 auto 6px;display:grid;place-items:center;border-radius:50% 50% 50% 14px}
+.stat{font:800 40px/1 var(--hd);letter-spacing:-.03em}
+/* Folha inferior usada no check-in por QR code */
+.sheet{position:absolute;inset:0;background:rgba(10,14,28,.55);display:flex;align-items:flex-end;z-index:5}
+.sheet>div{background:var(--card);width:100%;border-radius:32px 32px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px));text-align:center}
+.scan{width:200px;height:200px;margin:18px auto;border-radius:28px;background:var(--bg);position:relative;border:2px dashed var(--mut)}
+.scan::after{content:"";position:absolute;left:14px;right:14px;top:50%;height:3px;background:var(--sun);border-radius:3px;animation:s 1.8s ease-in-out infinite alternate}
+@keyframes s{from{top:18%}to{top:82%}}
+.toast{position:absolute;left:20px;right:20px;bottom:86px;background:var(--ink);color:var(--bg);padding:13px 18px;border-radius:16px;font-weight:600;z-index:9}
+.who{font-weight:600}
+@media(prefers-reduced-motion:reduce){.scan::after{animation:none}.tog,.tog::after{transition:none}}
+/* V2: campos de formulário */
+.in{width:100%;font:500 16px var(--bd);color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 14px}
+.in:focus-visible{outline:3px solid var(--pri);outline-offset:1px}
+
+/* Fase 1: extensões discretas aos tokens e formas ORIGINAIS do protótipo v2. */
+.in,select.in{margin-bottom:2px}.btn:disabled{opacity:.55;cursor:not-allowed}
+.row.actions{gap:8px;flex-wrap:wrap}.row.actions .btn{width:auto;flex:1;font-size:14px;padding:11px}
+.stacked{display:grid;gap:10px;margin:14px 0}.field{margin:12px 0}
+.field label{display:block;font-weight:600;font-size:14px;margin-bottom:6px}
+.field .in{display:block}.helper{color:var(--mut);font-size:12px;margin-top:5px}
+.micro{font-size:12px;color:var(--mut)}.mini{font-size:14px}
+.alert{background:var(--rose);color:var(--roseink);padding:12px 14px;border-radius:16px;margin:12px 0}
+.mintalert{background:var(--mint);color:var(--mintink)}
+.footer-note{font-size:12px;color:var(--mut);padding:12px 0 22px}
+.loading{padding:22px;text-align:center;color:var(--mut)}
+.pillcheck{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:8px 10px;background:var(--card);font:600 13px var(--bd)}
+.pillcheck input{accent-color:var(--pri)}
+.pillset{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}
+.fieldgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+select.in{appearance:auto}.toast{overflow-wrap:anywhere}
+@media(max-width:360px){.fieldgrid{grid-template-columns:1fr}main{padding-left:16px;padding-right:16px}}
+
+/* Atualizações PWA: mesmo desenho e tipografia do Escala Kids. */
+#pwa-update{position:fixed;z-index:99;left:50%;bottom:calc(18px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);width:min(400px,calc(100% - 28px));display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 12px 12px 18px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:22px;font:600 14px var(--bd);box-shadow:0 4px 16px rgb(10 14 28 / .10)}
+.pwa-update-btn{border:0;background:var(--pri);color:var(--on);font:700 14px var(--hd);padding:10px 16px;border-radius:999px;cursor:pointer}
+.pwa-update-btn:focus-visible{outline:3px solid var(--pri);outline-offset:3px}
+@media (prefers-reduced-motion: reduce){#pwa-update{scroll-behavior:auto}}
