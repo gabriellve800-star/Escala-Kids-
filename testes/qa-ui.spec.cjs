@@ -32,7 +32,12 @@ for(const name of ['android-chrome','iphone-webkit']){
   test.beforeEach(({},testInfo)=>test.skip(testInfo.project.name!==name,'Executar apenas no dispositivo correspondente'));
   const ui=state.ui[name];
   test('QR longo: inscrição real no navegador',async({page})=>{
-   await page.goto(root+'?convite='+encodeURIComponent(ui.qr.codigo));
+   await page.goto(root);
+   // A navegação de QR é gerada no navegador sem pôr o token no log do Playwright.
+   await page.evaluate(code=>{
+      history.replaceState({},'', '?convite='+encodeURIComponent(code));
+      location.reload();
+   },ui.qr.codigo);
    await expect(page.locator('form[data-form=signup]')).toBeVisible({timeout:20000});
    const p=person(name);
    await fill(page,p);
@@ -57,9 +62,9 @@ for(const name of ['android-chrome','iphone-webkit']){
    await page.locator('[name=sp]').fill('fraca123456');
    await page.locator('form[data-form=signup] button[type=submit]').click();
    await expect(page.getByText(/Senha: use de 10 a 128 caracteres/)).toBeVisible();
-   await expect(page.locator('[name=sn]')).toHaveValue(p.nome);
-   await expect(page.locator('[name=su]')).toHaveValue(p.usuario);
-   await expect(page.locator('[name=se]')).toHaveValue(p.email);
+   expect((await page.locator('[name=sn]').inputValue())===p.nome).toBe(true);
+   expect((await page.locator('[name=su]').inputValue())===p.usuario).toBe(true);
+   expect((await page.locator('[name=se]').inputValue())===p.email).toBe(true);
    await page.locator('[name=sp]').fill(p.senha);
    await page.locator('form[data-form=signup] button[type=submit]').click();
    await expect(page.getByText('Cadastro enviado',{exact:true})).toBeVisible({timeout:30000});
@@ -79,8 +84,8 @@ for(const name of ['android-chrome','iphone-webkit']){
    await fill(page,p);
    await context.setOffline(true);
    await page.locator('form[data-form=signup] button[type=submit]').click();
-   await expect(page.locator('form[data-form=signup] [name=sn]')).toHaveValue(p.nome);
-   await expect(page.locator('form[data-form=signup] [name=se]')).toHaveValue(p.email);
+   expect((await page.locator('form[data-form=signup] [name=sn]').inputValue())===p.nome).toBe(true);
+   expect((await page.locator('form[data-form=signup] [name=se]').inputValue())===p.email).toBe(true);
    await context.setOffline(false);
    await page.locator('form[data-form=signup] button[type=submit]').click();
    await expect(page.getByText('Cadastro enviado',{exact:true})).toBeVisible({timeout:30000});
