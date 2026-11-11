@@ -314,7 +314,7 @@ async function cleanup(){
  const leftovers=(await allAuth()).filter(x=>x.email?.startsWith(prefix));
  assert.equal(leftovers.length,0,'resíduos em auth.users');
  const counts={};
- for(const table of ['perfis','convites','funcoes_pessoa','auditoria']){
+ for(const table of ['perfis','convites','funcoes_pessoa','auditoria','escalas','disponibilidades']){
    const col=table==='funcoes_pessoa'?'pessoa_id':'id';
    const resp=await svc.from(table).select(col,{count:'exact',head:true});
    check(null,resp.error,'contagem '+table);
