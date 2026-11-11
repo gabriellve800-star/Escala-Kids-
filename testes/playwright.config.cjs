@@ -1,4 +1,4 @@
-const {defineConfig}=require('@playwright/test');
+const {defineConfig,devices}=require('@playwright/test');
 module.exports=defineConfig({
  testDir:'.',
  testMatch:'qa-ui.spec.cjs',
@@ -10,7 +10,7 @@ module.exports=defineConfig({
  reporter:[['list']],
  use:{baseURL:'http://localhost:4173/',trace:'off',screenshot:'off',video:'off'},
  projects:[
-  {name:'android-chrome',use:{browserName:'chromium'}},
-  {name:'iphone-webkit',use:{browserName:'webkit'}}
+  {name:'android-chrome',use:{...devices['Pixel 7'],browserName:'chromium'}},
+  {name:'iphone-webkit',use:{...devices['iPhone 13'],browserName:'webkit'}}
  ]
 });
