@@ -15,7 +15,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Executar testes sem credenciais pessoais
-        env:
-          ESCALA_FUNCTION_URL: https://pntzfuxwkjreugxzovjj.supabase.co/functions/v1/kids-auth
-        run: npm test
+      - name: Executar somente testes unitarios sem tocar no Supabase de producao
+        run: npm run test:unit
