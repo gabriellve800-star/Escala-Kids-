@@ -100,6 +100,8 @@ jobs:
         run: npm run test:qa:setup
       - name: Cadastro real, aprovação, recusa, JWT, negativos e concorrência
         run: npm run test:qa:integration
+      - name: Verificar agenda real: RLS, disponibilidade e escala em QA
+        run: node testes/qa-agenda.cjs
       - name: Construir front-end efêmero do QA e servir em localhost
         shell: bash
         run: |
