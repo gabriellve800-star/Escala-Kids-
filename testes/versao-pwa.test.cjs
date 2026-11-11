@@ -5,14 +5,14 @@ const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const worker=fs.readFileSync(path.join(root,'sw.js'),'utf8');
 const cfg=fs.readFileSync(path.join(root,'config.js'),'utf8');
-test('versão candidata é 1.2.3 no título, app e URL cacheada',()=>{
+test('versão candidata é 1.2.4 no título, app e URL cacheada',()=>{
  assert.match(html,/<title>Escala Kids · v1\.2\.3<\/title>/);
  assert.match(html,/app\.js\?v=1\.2\.3/);
  assert.match(worker,/app\.js\?v=1\.2\.3/);
  assert.match(app,/data-app-version[^\n]+v1\.2\.3/);
  assert.doesNotMatch(worker,/validation-fix-122|1\.2\.2/);
 });
-test('cache da versão 1.2.3 elimina outros caches Escala Kids na ativação',()=>{
+test('cache da versão 1.2.4 elimina outros caches Escala Kids na ativação',()=>{
  assert.match(worker,/escala-kids-v1\.2\.3/);
  assert.match(worker,/\.filter\(key => key\.startsWith\('escala-kids-'\) && key !== CACHE\)/);
 });
