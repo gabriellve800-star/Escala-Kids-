@@ -26,7 +26,7 @@ function json(body: unknown, status = 200) {
     },
   });
 }
-function err(message: string, code = 400) { return json({ error: message }, code); }
+function err(message: string, code = 400, meta: Record<string,unknown> = {}) { return json({ error: message, ...meta }, code); }
 const usuarioValido = (v: unknown) => typeof v === 'string' && /^[a-z][a-z0-9._-]{2,25}$/.test(v);
 const senhaValida = (v: unknown) => typeof v === 'string' && v.length >= 10 && v.length <= 128 &&
   /[a-z]/.test(v) && /[A-Z]/.test(v) && /\d/.test(v) && /[^A-Za-z0-9]/.test(v);
@@ -104,6 +104,7 @@ async function rpc(name: string, values: Record<string, unknown>) {
 const untrustedError = (e: unknown) => e instanceof Error ? e.message : String(e);
 
 Deno.serve(async (req) => {
+  const requestId = crypto.randomUUID(); // Identificador aleatório, não revela dados pessoais.
   if (req.method === 'OPTIONS') return json({}, 200);
   if (req.method !== 'POST') return err('Método não permitido.', 405);
   if (!url || !serverKey || rateSalt.length < 24) {
@@ -161,8 +162,8 @@ Deno.serve(async (req) => {
         const codigo = normalizeInvite(b.codigo);
         const erro=erroCadastro(b);
         if (erro) {
-          console.warn('escala_register_validation_rejected',{field:erro.field});
-          return err(erro.message,422);
+          console.warn('escala_register_validation_rejected',{request_id:requestId,stage:'validate',code:'INVALID_FIELD',field:erro.field});
+          return err(erro.message,422,{field:erro.field,request_id:requestId});
         }
         // Protege convites repetidos sem bloquear toda uma igreja no mesmo Wi-Fi.
         const permitidoCodigo=await rpc('limitar_cadastro',{
@@ -179,8 +180,8 @@ Deno.serve(async (req) => {
           email, password: String(b.senha), email_confirm: true,
         });
         if (ae || !created.user) {
-          console.warn('escala_register_auth_error',{code:ae?.code||'unknown',status:ae?.status||0});
-          return err('Não foi possível criar o acesso. Verifique se já existe conta com este e-mail.', 409);
+          console.warn('escala_register_auth_error',{request_id:requestId,stage:'createUser',code:ae?.code||'AUTH_ERROR',status:ae?.status||0});
+          return err('Não foi possível criar o acesso. Verifique se já existe conta com este e-mail.', 409,{field:'email',request_id:requestId});
         }
         try {
           await rpc('finalizar_cadastro', {
@@ -192,18 +193,18 @@ Deno.serve(async (req) => {
           const info=untrustedError(e);
           const motivo=info.includes('perfis_usuario_key')?'USUARIO_DUPLICADO':
             info.includes('CONVITE_INVALIDO')?'CONVITE_INVALIDO':'ERRO_RPC';
-          console.warn('escala_register_database_error',{stage:'finalizar_cadastro',code:motivo});
+          console.warn('escala_register_database_error',{request_id:requestId,stage:'finalizar_cadastro',code:motivo});
           // Reverter Auth E CONFERIR o resultado; evitar ocultar conta órfã.
           const { error: rollbackError } = await admin.auth.admin.deleteUser(created.user.id);
           if (rollbackError) {
             console.error('escala_register_rollback_failed',{
-              stage:'rollback',code:rollbackError.code||'ERRO_AUTH',status:rollbackError.status||0,
+              request_id:requestId,stage:'rollback',code:rollbackError.code||'ERRO_AUTH',status:rollbackError.status||0,
             });
-            return err('Falha de finalização. Contate o administrador antes de repetir o cadastro.',500);
+            return err('Falha de finalização. Contate o administrador antes de repetir o cadastro.',500,{request_id:requestId});
           }
-          if (info.includes('perfis_usuario_key') || info.includes('usuario')) return err('Esse nome de usuário já está cadastrado. Escolha outro.',409);
-          if (info.includes('CONVITE_INVALIDO')) return err('Convite vencido ou já utilizado. Solicite outro código.',409);
-          return err('Não foi possível concluir o cadastro. Tente outra vez ou solicite um novo convite.',409);
+          if (info.includes('perfis_usuario_key') || info.includes('usuario')) return err('Esse nome de usuário já está cadastrado. Escolha outro.',409,{field:'usuario',request_id:requestId});
+          if (info.includes('CONVITE_INVALIDO')) return err('Convite vencido ou já utilizado. Solicite outro código.',409,{field:'codigo',request_id:requestId});
+          return err('Não foi possível concluir o cadastro. Tente outra vez ou solicite um novo convite.',409,{request_id:requestId});
         }
         return json({ ok: true, status: 'pendente' }, 201);
       }
