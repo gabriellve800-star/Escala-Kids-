@@ -7,7 +7,9 @@ const url = Deno.env.get('SUPABASE_URL') ?? '';
 const serverKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 // Identidades agora usam e-mails reais: não é necessário domínio próprio.
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-const appOrigin = 'https://gabriellve800-star.github.io'; // Domínio único permitido pelo CORS.
+const appOrigin = 'https://gabriellve800-star.github.io'; // Origem pública.
+const qaTestOrigin = Deno.env.get('QA_TEST_ORIGIN') || ''; // Somente no projeto de TESTE.
+const allowedOrigins = new Set([appOrigin,qaTestOrigin].filter(Boolean));
 const rateSalt = Deno.env.get('RATE_LIMIT_PEPPER') || serverKey; // Segredo privado do servidor.
 const admin = createClient(url, serverKey, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -19,7 +21,7 @@ function json(body: unknown, status = 200) {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Access-Control-Allow-Origin': appOrigin,
+      'Access-Control-Allow-Origin': qaTestOrigin ? '*' : appOrigin,
       'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Vary': 'Origin',
@@ -123,7 +125,7 @@ Deno.serve(async (req) => {
     return err('Configuração do servidor incompleta.', 503);
   }
   // CORS não substitui autenticação, mas restringe o uso comum no navegador.
-  if (req.headers.get('origin') !== appOrigin) return err('Origem não autorizada.', 403);
+  if (!allowedOrigins.has(req.headers.get('origin') ?? '')) return err('Origem não autorizada.', 403);
   const size = Number(req.headers.get('content-length') || 0);
   if (size > 12000) return err('Requisição muito grande.', 413);
 
@@ -192,8 +194,16 @@ Deno.serve(async (req) => {
           email, password: String(b.senha), email_confirm: true,
         });
         if (ae || !created.user) {
-          console.warn('escala_register_auth_error',{request_id:requestId,stage:'createUser',code:ae?.code||'AUTH_ERROR',status:ae?.status||0});
-          return err('Não foi possível criar o acesso. Verifique se já existe conta com este e-mail.', 409,{field:'email',request_id:requestId});
+          const code = String(ae?.code || 'AUTH_ERROR');
+          console.warn('escala_register_auth_error',{request_id:requestId,stage:'createUser',code,status:ae?.status||0});
+          if (['email_exists','email_address_not_authorized','user_already_exists','email_address_invalid'].includes(code)) {
+            return err('E-mail já cadastrado ou indisponível. Use outro e-mail válido.',409,{field:'email',request_id:requestId});
+          }
+          if (code==='weak_password' || code==='password_too_short') {
+            return err('Senha recusada pelo serviço. Crie uma senha mais forte, com 10+ caracteres, números, maiúsculas e símbolos.',422,{field:'senha',request_id:requestId});
+          }
+          if (ae?.status===429) return err('Muitas tentativas. Aguarde antes de tentar novamente.',429,{request_id:requestId});
+          return err('Não foi possível criar o acesso. Tente novamente mais tarde.',503,{request_id:requestId});
         }
         try {
           await rpc('finalizar_cadastro', {
@@ -208,9 +218,13 @@ Deno.serve(async (req) => {
           console.warn('escala_register_database_error',{request_id:requestId,stage:'finalizar_cadastro',code:motivo});
           // Reverter Auth E CONFERIR o resultado; evitar ocultar conta órfã.
           const { error: rollbackError } = await admin.auth.admin.deleteUser(created.user.id);
-          if (rollbackError) {
+          const {data: remain} = rollbackError ? {data:null} :
+            await admin.auth.admin.getUserById(created.user.id);
+          if (rollbackError || remain?.user) {
             console.error('escala_register_rollback_failed',{
-              request_id:requestId,stage:'rollback',code:rollbackError.code||'ERRO_AUTH',status:rollbackError.status||0,
+              request_id:requestId,stage:'rollback',
+              code:rollbackError?.code || 'USUARIO_AINDA_EXISTE',
+              status:rollbackError?.status || 500,
             });
             return err('Falha de finalização. Contate o administrador antes de repetir o cadastro.',500,{request_id:requestId});
           }
