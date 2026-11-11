@@ -26,9 +26,6 @@ async function codePage(page,code){
 }
 for(const name of ['android-chrome','iphone-webkit']){
  test.describe(name,()=>{
-  test.use(name==='android-chrome'
-    ? {...devices['Pixel 7'],browserName:'chromium'}
-    : {...devices['iPhone 13'],browserName:'webkit'});
   test.beforeEach(({},testInfo)=>test.skip(testInfo.project.name!==name,'Executar apenas no dispositivo correspondente'));
   const ui=state.ui[name];
   test('QR longo: inscrição real no navegador',async({page})=>{
