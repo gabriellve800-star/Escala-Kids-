@@ -62,7 +62,7 @@ async function verifyStatic(){
    assert(text.includes(ref+'.supabase.co')&&!text.includes('sb_secret_')&&!text.includes('eofoeijyfpptcktiqeah'));
   }
   if(item==='index.html')assert(remote.toString('utf8').includes('Escala Kids · v1.2.4'));
-  if(item==='sw.js')assert(remote.toString('utf8').includes("escala-kids-v1.2.4-qa-invite-fix"));
+  if(item==='sw.js')assert(remote.toString('utf8').includes("escala-kids-v1.2.4-agenda-voluntarios"));
  }
  console.log('PROD_SMOKE_SITE_HASH_OK: v1.2.4 index/app/sw; config prod public; HTTP 200');
 }
