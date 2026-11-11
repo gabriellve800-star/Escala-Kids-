@@ -1,0 +1,3 @@
+project_id = "escala-kids-qa"
+[functions.kids-auth]
+verify_jwt = false
