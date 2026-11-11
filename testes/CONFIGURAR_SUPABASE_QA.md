@@ -1,46 +1,43 @@
-# Escala Kids — configurar o projeto Supabase de TESTE
+# Escala Kids — projeto de TESTE confirmado: Teste escala
 
-Atenção: todas as ações de CI são no projeto recém-criado **Escala Kids QA**. Não copiar projetos de produção nem fornecer credenciais no chat.
+Projeto QA: `eofoeijyfpptcktiqeah` (us-east-1). Projeto de produção: `pntzfuxwkjreugxzovjj`. **Não confundir.**
 
-## Criar
+## Já executado pelo assistente
 
-1. Supabase Dashboard → **New project** → nome `Escala Kids QA`; organização da igreja; escolher região e definir senha do banco.
-2. Abrir o novo projeto → **Project Settings → API Keys**: copiar chave publicável `sb_publishable_...` e chave secreta `sb_secret_...`.
-3. Copiar o ID do projeto `project ref` da URL `supabase.com/dashboard/project/<REF>` — apenas do projeto QA.
-4. Abrir https://supabase.com/dashboard/account/tokens e gerar um **Personal Access Token** próprio para automação. Não enviar a ninguém.
-5. Abrir https://github.com/gabriellve800-star/Escala-Kids-/settings/secrets/actions → **New repository secret**.
+- Supabase QA localizado e estado ACTIVE_HEALTHY confirmado.
+- Migrations instaladas no QA: `20261111174456_qa_schema_escala_kids_v122` e `20261111174505_qa_limitador_rede_compartilhada`.
+- Função `kids-auth` versão 1 ativa exclusivamente no QA.
+- Regras RLS nas quatro tabelas públicas, concessões apenas ao papel service_role e auditoria de segurança sem alertas.
+- O ID do QA e a chave publicável (que não é segredo) já estão embutidos no workflow QA. **Não é necessário adicioná-los como Secret.**
 
-| Secret GitHub | Valor |
+## Restam SOMENTE três GitHub Secrets privados
+
+No GitHub: https://github.com/gabriellve800-star/Escala-Kids-/settings/secrets/actions
+Toque em **New repository secret** e insira os três valores abaixo. **Nunca envie valores no chat.**
+
+| Nome exato | De onde copiar |
 |---|---|
-| `QA_SUPABASE_PROJECT_REF` | ID de 20 caracteres do projeto QA |
-| `QA_SUPABASE_ACCESS_TOKEN` | Token pessoal do Supabase |
-| `QA_SUPABASE_DB_PASSWORD` | Senha do banco do projeto QA |
-| `QA_SUPABASE_PUBLISHABLE_KEY` | Chave **publicável** (sb_publishable_) do projeto QA |
-| `QA_SUPABASE_SECRET_KEY` | Chave **secreta** (sb_secret_) do projeto QA |
+| `QA_SUPABASE_ACCESS_TOKEN` | https://supabase.com/dashboard/account/tokens — criar token pessoal de escopo restrito ao projeto Teste escala, com acesso de leitura às chaves e administração de Edge Functions/migrations conforme necessário pelo CLI |
+| `QA_SUPABASE_DB_PASSWORD` | Senha de banco criada para Teste escala. Se perdeu: Dashboard do Teste escala → Database → Settings → Reset database password |
+| `QA_SUPABASE_SECRET_KEY` | Projeto Teste escala → Project Settings → API Keys → seção Secret keys, mostrar/copiar a chave `sb_secret_...` |
 
-## Executar
+O access token é um token de automação **escopado ao projeto QA**, nunca à produção. Se permissões mínimas faltarem, ajuste o escopo somente para as operações de deploy exigidas.
 
-Depois de salvar os cinco Secrets, abrir:
+## Como rodar
+
+O workflow inicia automaticamente em mudanças da branch QA; sem Secrets ele interrompe antes do banco. Após salvar os três:
 https://github.com/gabriellve800-star/Escala-Kids-/actions/workflows/qa-supabase-e2e.yml
 
-Selecionar **Run workflow**, branch `qa/convites-20261111`.
+- Toque em **Run workflow**, selecione **qa/convites-20261111**, e toque em **Run workflow**.
+- Confira os steps, inclusive **Limpeza obrigatória e consulta de resíduos ZERO**. Resultado verde precisa incluir esse step.
+- **Nenhuma liberação à produção é automática.** Esta branch é isolada e protegida contra o REF de produção.
 
-O workflow:
-- verifica que o ID não corresponde aos dois projetos existentes;
-- gera e versiona `package-lock.json` se necessário e instala dependências pinadas;
-- aplica migrations exclusivamente no projeto QA;
-- publica a função `kids-auth` QA e configura origin local exclusivo do QA;
-- executa validações, fluxo HTTP com contas sintéticas e segurança com JWT real;
-- faz 12 testes de UI (6 por Android Chromium e iPhone WebKit);
-- confere no banco 10 cadastros visuais;
-- testa limite por IP e 429;
-- executa a limpeza mesmo quando algum passo falhar, e exige zero resíduos.
+## Como o teste funciona
 
-## Limites e riscos
+- Migrações são conferidas no banco QA, sem duplicar migrations já registradas;
+- Função `kids-auth` implantada no QA;
+- Senhas e usuários sintéticos gerados no runner; sem logs com credenciais;
+- Cadastro pelo código e QR; aprovação e recusa; negativos e RLS com JWT real; Playwright Android/Chrome e iPhone/WebKit emulados; limite 429;
+- Cleanup obrigatório em `if: always()` com consulta de zero resíduos.
 
-- O runner emula Android/Chrome e o motor WebKit de Safari; **não é iPhone físico**.
-- O token pessoal dá acesso à organização do Supabase; armazená-lo somente nos GitHub Secrets e rotacionar se vazar.
-- Esta branch **não faz merge nem deploy na produção**.
-- Não habilite GitHub Pages nesta branch; o navegador de testes usa `localhost`.
-- O workflow é vermelho até configurar os Secrets; isto é intencional, não falha de produção.
-- O relatório de aprovação só poderá ser emitido quando **todas** as etapas ficarem verdes, inclusive limpeza.
+**Importante:** não coloque a senha do banco no código, não copie a chave `sb_secret_` no chat, não use o projeto da igreja para testes. Só publicar produção após prova E2E completa e revalidação do que está online.
