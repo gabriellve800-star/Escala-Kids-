@@ -9,6 +9,13 @@ const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
 const FN = { professor:'Professor', auxiliar:'Auxiliar', lanche:'Lanche', portaria:'Portaria' };
 const PF = { administrador:'Administrador', lider:'Líder', voluntario:'Voluntário' };
 const cleanUsername = (s) => String(s || '').trim().toLowerCase();
+const normalizeInvite = (value) => {
+  const code = String(value || '').trim().toUpperCase();
+  if (/^[A-Z]{3}[- ]?\d{3}$/.test(code)) return code.slice(0,3) + '-' + code.replace(/\D/g,'').slice(-3);
+  return /^[A-F0-9]{64}$/.test(code) ? code.toLowerCase() : '';
+};
+const inviteLink = (token) => `${location.origin}${location.pathname}?convite=${encodeURIComponent(token)}`;
+
 const IC = {
   home:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   cal:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>',
@@ -62,9 +69,9 @@ const rawInvite = params.get('convite');
 if (rawInvite) history.replaceState(null, '', location.pathname);
 const state = {
   user:null, profile:null, auth:rawInvite?TOK.signup:TOK.login,
-  invitation:rawInvite || '', people:[], functions:[], invites:[], audit:[],
+  invitation:normalizeInvite(rawInvite) || '', inviteVerified:false, people:[], functions:[], invites:[], audit:[],
   tab:'inicio', drafts:{}, modal:null, busy:false, toast:'', error:'',
-  currentInvitation:'', demoTheme:'',
+  currentInvitation:null, pendingCount:0, demoTheme:'',
 };
 let sb;
 let toastTimer;
@@ -99,9 +106,9 @@ function renderHeader() {
 }
 function tabs() {
   if (!state.user || !canWork()) return [];
-  if (isAdmin()) return [['aprov','Aprovações','list'],['pessoas','Pessoas','users'],['convites','Convites','cal'],['auditoria','Auditoria','user']];
+  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['convites','Convites','cal'],['auditoria','Auditoria','user']];
   if (isLeader()) return [['escala','Escala','cal'],['equipe','Equipe','users'],
-    ...(canApprove()?[['aprov','Aprovações','list'],['convites','Convites','user']]:[])];
+    ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
   return [['inicio','Início','home'],['disp','Disponibilidade','cal'],['perfil','Perfil','user']];
 }
 function renderNav() {
@@ -120,17 +127,24 @@ function authUI() {
     return `<div class="card" style="margin-top:28px"><h2>Acesso ${state.profile.status==='recusado'?'não aprovado':'indisponível'}</h2><p class="mut">Fale com a liderança do ministério para esclarecer sua situação.</p></div><button class="btn ghost" data-a="out">Sair</button>`;
   }
   if (state.auth==='wait') return `<div class="card" style="margin-top:24px"><h2>Cadastro enviado</h2><p class="mut">Quando a liderança aprovar, você poderá entrar com seu nome de usuário e senha.</p></div><button class="btn ghost" data-a="login">Voltar ao início</button>`;
-  if (state.auth==='signup') return `<h2>Criar seu acesso</h2><p class="mut">Você recebeu um convite do ministério Kids. Depois do envio, um responsável aprova seu cadastro.</p>
-    <form data-form="signup">
-      ${field('sn','Nome completo','text','autocomplete="name" required minlength="3" maxlength="120"')}
-      ${field('su','Nome de usuário','text','autocomplete="username" required pattern="[A-Za-z][A-Za-z0-9._-]{2,25}"')}
-      ${field('se','E-mail pessoal','email','autocomplete="email" required maxlength="254"')}
-      ${field('sf','Telefone','tel','autocomplete="tel" required inputmode="tel"')}
-      ${field('sp','Senha','password','autocomplete="new-password" required minlength="10"')}
-      <p class="helper">Use um e-mail real e seu. Ele é necessário para cadastrar o acesso sem domínio próprio. A senha deve ter 10+ caracteres, letra maiúscula, minúscula, número e símbolo.</p>
-      ${field('sc','Código de convite','text',`required value="${esc(state.invitation)}"`)}
-      <div style="height:12px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Enviar cadastro</button>
-    </form><div style="height:8px"></div><button class="btn ghost" data-a="login">Voltar</button>`;
+  if (state.auth==='signup') {
+    if (!state.inviteVerified) return `<h2>Tenho um convite</h2><p class="mut">Digite o código recebido (ex.: ABC-123) ou abra o QR Code enviado pelo responsável.</p>
+      <form data-form="checkinvite" style="margin-top:18px">
+        ${field('sc','Código do convite','text',`required autocapitalize="characters" autocomplete="off" maxlength="64" value="${esc(state.invitation)}" placeholder="ABC-123"`)}
+        <div style="height:12px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Validar convite e continuar</button>
+      </form><div style="height:8px"></div><button class="btn ghost" data-a="login">Voltar ao login</button>`;
+    return `<h2>Convite válido</h2><p class="mut">Agora preencha seus dados. Depois do envio, um administrador ou líder autorizado analisará o cadastro.</p>
+      <div class="card" style="margin:14px 0;background:var(--mint)"><strong style="color:var(--mintink)">Convite confirmado</strong> <button type="button" class="btn ghost" style="float:right;padding:8px 11px;width:auto" data-a="changeinvite">Trocar código</button></div>
+      <form data-form="signup">
+        ${field('sn','Nome completo','text','autocomplete="name" required minlength="3" maxlength="120"')}
+        ${field('su','Nome de usuário','text','autocomplete="username" required pattern="[A-Za-z][A-Za-z0-9._-]{2,25}"')}
+        ${field('se','E-mail pessoal','email','autocomplete="email" required maxlength="254"')}
+        ${field('sf','Telefone com DDD','tel','autocomplete="tel" required inputmode="tel" placeholder="(11) 99999-9999"')}
+        ${field('sp','Senha','password','autocomplete="new-password" required minlength="10"')}
+        <p class="helper">A senha precisa ter 10 ou mais caracteres, com maiúscula, minúscula, número e símbolo. Seus dados só serão liberados aos responsáveis autorizados.</p>
+        <div style="height:12px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Enviar solicitação para aprovação</button>
+      </form><div style="height:8px"></div><button class="btn ghost" data-a="login">Voltar</button>`;
+  }
   return `<div class="hero" style="margin-top:14px"><h2 style="margin:0 0 8px">Bem-vindo ao Escala Kids</h2><p>Entre para ver sua escala e cuidar dos pequenos.</p></div>
     <form data-form="login">${field('lu','Usuário ou e-mail','text','autocomplete="username" required')}${field('lp','Senha','password','autocomplete="current-password" required')}
       <div style="height:10px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Entrar</button></form>
@@ -183,25 +197,53 @@ function peopleUI() {
 }
 function invitesUI() {
   if (!canApprove()) return '<h2>Sem permissão</h2>';
-  let h=`<h2>Convites</h2><p class="mut">Envie um link para cadastrar novos voluntários. O cadastro ainda precisa ser aprovado.</p>
-  <div class="card" style="margin-top:16px"><h3>Criar convite</h3><form data-form="invite">
+  let h=`<h2>Convites</h2><p class="mut">Gere um código curto ou QR Code para convidar voluntários. O acesso só será liberado depois da aprovação.</p>
+  <div class="card" style="margin-top:16px"><h3>Novo convite</h3><form data-form="invite">
   ${field('days','Validade em dias','number','min="1" max="30" value="7" required')}
-  ${field('uses','Número máximo de usos','number','min="1" max="50" value="1" required')}
-  <div style="height:10px"></div><button class="btn pri" type="submit">Gerar convite</button></form></div>`;
+  ${field('uses','Número máximo de cadastros','number','min="1" max="50" value="1" required')}
+  <div style="height:10px"></div><button class="btn pri" type="submit">Gerar código e QR</button></form></div>`;
   if (state.currentInvitation) {
-    h+=`<div class="card" style="background:var(--mint)"><h3 style="color:var(--mintink)">Convite criado</h3>
-    <p class="mini" style="margin:9px 0;color:var(--mintink);word-break:break-all">${esc(state.currentInvitation)}</p>
-    <button class="btn pri" data-a="copy">Copiar link</button><p class="micro" style="margin-top:8px;color:var(--mintink)">Copie agora. Por segurança, o código completo não é exibido novamente.</p></div>`;
+    const v = state.currentInvitation;
+    h+=`<div class="card" style="background:var(--mint)"><h3 style="color:var(--mintink)">Seu convite está pronto</h3>
+      <p class="mini" style="margin:9px 0 4px;color:var(--mintink)">Código para digitar</p>
+      <p style="font-size:34px;letter-spacing:3px;font-weight:800;color:var(--navy);margin:0 0 10px;user-select:all">${esc(v.code)}</p>
+      <div class="row actions" style="border:0;padding:0 0 8px"><button class="btn ghost" data-a="copyinvitecode">Copiar código</button><button class="btn ghost" data-a="copyinvitelink">Copiar link</button></div>
+      <div style="border-radius:18px;background:white;padding:14px;margin:12px auto;max-width:220px;text-align:center">
+        <div id="invite-qr" role="img" aria-label="QR Code do convite Escala Kids" style="display:flex;justify-content:center"></div>
+        <p style="color:#14213D;font-size:12px;margin-top:6px;font-weight:700">Escaneie para se cadastrar</p>
+      </div>
+      <button class="btn pri" data-a="shareinvite">Compartilhar convite</button>
+      <button class="btn ghost" style="margin-top:8px" data-a="downloadqr">Salvar imagem do QR</button>
+      <p class="micro" style="margin-top:10px;color:var(--mintink)">Você pode mandar o código, o link ou a imagem do QR. O cadastro só entra na equipe após aprovação.</p>
+    </div>`;
   }
   h+=`<h3 style="margin:18px 0 10px">Convites emitidos</h3>`;
   if (!state.invites.length) return h+'<div class="card"><p class="mut">Ainda não há convites.</p></div>';
   for (const c of state.invites) {
     const valid=!c.revogado&&new Date(c.expira_em)>new Date()&&c.usos<c.usos_max;
-    h+=`<div class="card"><div class="row" style="padding:0"><span class="who">${valid?'Convite ativo':'Convite encerrado'}</span><span class="tag ${valid?'':'warn'}">${c.usos} / ${c.usos_max} usos</span></div>
+    h+=`<div class="card"><div class="row" style="padding:0"><span class="who">${valid?'Convite ativo':'Convite encerrado'}</span><span class="tag ${valid?'':'warn'}">${c.usos} / ${c.usos_max} cadastros</span></div>
     <p class="mut" style="margin:10px 0 0">Válido até ${esc(new Date(c.expira_em).toLocaleString('pt-BR'))}</p>
     ${valid?`<button class="btn ghost" style="margin-top:12px" data-a="revoke" data-id="${c.id}">Revogar convite</button>`:''}</div>`;
   }
   return h;
+}
+function paintInviteQR() {
+  const box = document.querySelector('#invite-qr');
+  if (!box || !state.currentInvitation) return;
+  if (typeof QRCode !== 'function') {
+    box.textContent = 'QR indisponível neste navegador. Use o código ou o link.';
+    return;
+  }
+  try {
+    new QRCode(box, {text:state.currentInvitation.qrLink,width:180,height:180,
+      colorDark:'#14213D',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+    const canvas = box.querySelector('canvas');
+    if (canvas) canvas.style.maxWidth='100%';
+    const img = box.querySelector('img');
+    if (img) img.style.maxWidth='100%';
+  } catch {
+    box.textContent='Não foi possível gerar o QR. Use o código ou o link.';
+  }
 }
 function auditUI() {
   if (!isAdmin()) return '<h2>Sem permissão</h2>';
@@ -266,6 +308,7 @@ function render() {
   renderHeader(); renderNav();
   $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
   renderToast();renderModal();
+  paintInviteQR();
 }
 async function readProfile() {
   const {data:u,error:e}=await sb.auth.getUser();
@@ -287,6 +330,7 @@ async function loadData() {
   if(res.some(r=>r.error)) {notify('Não foi possível carregar todas as informações.',true);render();return;}
   let idx=0;state.people=res[idx++].data||[];state.functions=res[idx++].data||[];
   state.invites=canApprove()?res[idx++].data||[]:[];
+  state.pendingCount=canApprove()?state.people.filter(p=>p.status==='pendente').length:0;
   state.audit=isAdmin()?res[idx++].data||[]:[];
   state.drafts={};render();
 }
@@ -295,6 +339,12 @@ async function boot() {
   if (await enforceInactivity()) return;
   await readProfile();
   if (state.user) markHumanActivity();
+  if (!state.user && state.auth==='signup' && rawInvite && !state.inviteVerified) {
+    try {
+      const check = await gateway('check_invite',{codigo:normalizeInvite(rawInvite)});
+      if (check?.valid) {state.invitation=normalizeInvite(rawInvite);state.inviteVerified=true;}
+    } catch { /* se QR expirou, pessoa pode inserir um novo código */ }
+  }
   if(state.user && canWork()) {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
@@ -343,12 +393,20 @@ async function handleForm(form) {
       markHumanActivity(true);
       state.tab='aprov';await boot();
       if(state.profile?.status==='ativo'&&!state.profile.primeiro_acesso)notify('Bem-vindo ao Escala Kids.');
+    } else if(id==='checkinvite') {
+      const code=normalizeInvite(val('sc'));
+      if (!code) throw new Error('Digite o código no formato ABC-123 ou abra o QR do convite.');
+      const data=await gateway('check_invite',{codigo:code});
+      if (!data?.valid) throw new Error('Convite inválido ou encerrado.');
+      state.invitation=code;state.inviteVerified=true;
+      notify('Convite validado. Complete seu cadastro.');
     } else if(id==='signup') {
-      const code=val('sc').match(/[a-f0-9]{64}/)?.[0]||'';
+      if (!state.inviteVerified || !state.invitation) throw new Error('Valide seu convite primeiro.');
       await gateway('register',{
-        usuario:cleanUsername(val('su')),nome:val('sn'),email:val('se').toLowerCase(),telefone:val('sf'),senha:val('sp'),codigo:code,
+        usuario:cleanUsername(val('su')),nome:val('sn'),email:val('se').toLowerCase(),telefone:val('sf'),senha:val('sp'),codigo:state.invitation,
       });
-      state.auth='wait';state.invitation='';render();
+      state.auth='wait';state.invitation='';state.inviteVerified=false;
+      notify('Cadastro enviado para aprovação.');
     } else if(id==='password') {
       if(val('p1')!==val('p2')) throw new Error('As senhas precisam ser iguais.');
       await gateway('change_password',{senha:val('p1')});
@@ -358,8 +416,10 @@ async function handleForm(form) {
     } else if(id==='invite') {
       const data=await gateway('invite',{dias:Number(val('days')),usos:Number(val('uses'))});
       // Só o navegador do emissor recebe o token em claro; no banco fica apenas hash.
-      state.currentInvitation=`${location.origin}${location.pathname}?convite=${data.codigo}`;
-      await loadData();notify('Convite criado.');
+      if (!/^[A-Z]{3}-\d{3}$/.test(data?.codigo_curto || '') || !/^[a-f0-9]{64}$/.test(data?.codigo || ''))
+        throw new Error('O servidor não retornou os dados do convite.');
+      state.currentInvitation={code:data.codigo_curto,link:inviteLink(data.codigo_curto),qrLink:inviteLink(data.codigo)};
+      await loadData();notify('Convite criado. Compartilhe o código ou QR.');
     }
   } catch(e) {notify(showError(e),true);} finally {state.busy=false;render();}
 }
@@ -393,13 +453,14 @@ async function actionClick(b) {
     await loadData(); notify('Solicitações atualizadas.'); return;
   }
   if(a==='tab'){
-    state.tab=b.dataset.tab;state.currentInvitation='';
+    state.tab=b.dataset.tab;state.currentInvitation=null;
     if (state.tab === 'aprov' && canApprove()) await loadData();
     else render();
     $('#main').scrollTop=0;return;
   }
   if(a==='login'){state.auth='login';render();return;}
-  if(a==='signup'){state.auth='signup';render();return;}
+  if(a==='signup'){state.auth='signup';state.inviteVerified=false;render();return;}
+  if(a==='changeinvite'){state.inviteVerified=false;render();return;}
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
   if(a==='out'){
@@ -407,9 +468,25 @@ async function actionClick(b) {
     state.auth='login';state.drafts={};state.people=[];render();return;
   }
   if(a==='reload'){await boot();if(canWork())notify('Seu acesso foi aprovado.');else notify('Seu cadastro ainda está em análise.');return;}
-  if(a==='copy'){
-    try{await navigator.clipboard.writeText(state.currentInvitation);notify('Link copiado.');}
-    catch{notify('Selecione e copie o link exibido.',true);}
+  if (['copyinvitecode','copyinvitelink','shareinvite','downloadqr'].includes(a)) {
+    const v=state.currentInvitation;
+    if (!v) return;
+    if(a==='downloadqr'){
+      const canvas=document.querySelector('#invite-qr canvas');
+      const img=document.querySelector('#invite-qr img');
+      const url=canvas?.toDataURL('image/png') || img?.src;
+      if (!url) {notify('Não foi possível salvar o QR neste navegador.',true);return;}
+      const anchor=document.createElement('a');anchor.href=url;anchor.download=`Escala-Kids-${v.code}.png`;
+      document.body.append(anchor);anchor.click();anchor.remove();return;
+    }
+    const value=a==='copyinvitecode'?v.code:a==='copyinvitelink'?v.link:
+      `Convite para o Escala Kids\nCódigo: ${v.code}\nAcesse: ${v.link}`;
+    if (a==='shareinvite' && navigator.share) {
+      try {await navigator.share({title:'Convite Escala Kids',text:value});}catch {/* cancelado */}
+      return;
+    }
+    try{await navigator.clipboard.writeText(value);notify('Convite copiado.');}
+    catch{notify('Não foi possível copiar; use a seleção do texto.',true);}
     return;
   }
   const p=state.people.find(x=>x.id===id);
@@ -466,11 +543,15 @@ document.addEventListener('visibilitychange',() => {
   if (canApprove() && state.tab === 'aprov') void loadData();
 });
 // Atualização passiva apenas de pedidos visíveis, sem eliminar outras sessões.
-setInterval(() => {
-  if (document.hidden || !state.user || !canApprove() || state.tab !== 'aprov' || state.busy) return;
+setInterval(async () => {
+  if (document.hidden || !state.user || !canApprove() || state.busy) return;
   if (idleTimedOut()) {void enforceInactivity();return;}
-  void loadData();
-},60000);
+  if (state.tab === 'aprov') {await loadData();return;}
+  const {count,error}=await sb.from('perfis').select('id',{count:'exact',head:true}).eq('status','pendente');
+  if (error || count==null || count===state.pendingCount) return;
+  state.pendingCount=count;renderNav();
+  if (count>0) notify(`${count} cadastro(s) aguardando aprovação.`);
+},45000);
 // PWA: verifica novas versões ao abrir, voltar ao app e periodicamente.
 // A atualização depende de internet e de o navegador buscar o novo service worker.
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
