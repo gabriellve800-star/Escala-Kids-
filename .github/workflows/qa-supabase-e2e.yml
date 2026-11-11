@@ -91,7 +91,7 @@ jobs:
           set -euo pipefail
           # A origem localhost é ativada exclusivamente quando SUPABASE_URL é o projeto QA.
           # Não é necessário gravar secret adicional no Supabase.
-          supabase functions deploy kids-auth --project-ref "$QA_SUPABASE_PROJECT_REF" --no-verify-jwt
+          supabase functions deploy kids-auth --project-ref "$QA_SUPABASE_PROJECT_REF" --no-verify-jwt --yes
           echo "FUNCTION_DEPLOY_QA"
       - name: Testes unitários e HTTP reais no QA
         run: npm test
