@@ -18,6 +18,44 @@ const IC = {
 };
 const ico = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${IC[name] || IC.home}</svg>`;
 const TOK = { login:'login', signup:'signup', wait:'wait' };
+// Uma sessão local permanece ativa até 14 dias sem uso do app.
+// A autenticação Supabase continua renovando tokens em segundo plano;
+// renovar um token NÃO conta como atividade humana.
+const AUTH_STORAGE_KEY = 'escala-kids-auth-v1';
+const LAST_ACTIVITY_KEY = 'escala-kids-last-activity-v2';
+const INACTIVITY_LIMIT_MS = 14 * 24 * 60 * 60 * 1000;
+const readLastActivity = () => {
+  try { return Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0; } catch { return 0; }
+};
+const idleTimedOut = () => {
+  const last = readLastActivity();
+  return last > 0 && (Date.now() - last) >= INACTIVITY_LIMIT_MS;
+};
+let expiredOnStartup = false;
+if (idleTimedOut()) {
+  // O SDK ainda não foi iniciado: descarte tokens persistidos ANTES de restaurá-los.
+  try {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    expiredOnStartup = true;
+  } catch { /* storage pode estar indisponível */ }
+}
+function markHumanActivity(force = false) {
+  if (!force && !state.user) return;
+  try { localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now())); } catch { /* privado */ }
+}
+function forgetHumanActivity() {
+  try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch { /* privado */ }
+}
+async function enforceInactivity() {
+  if (!state.user || !idleTimedOut()) return false;
+  try { await sb.auth.signOut({ scope: 'local' }); }
+  catch { /* tentar sair mesmo que a rede esteja indisponível */ }
+  forgetHumanActivity();
+  state.user=null; state.profile=null; state.auth='login';
+  render(); notify('Sua sessão expirou após 14 dias sem abrir o aplicativo.', true);
+  return true;
+}
 const params = new URLSearchParams(location.search);
 const rawInvite = params.get('convite');
 // Não deixa tokens de convite no histórico depois de carregar a página.
@@ -33,8 +71,7 @@ let toastTimer;
 const isReady = () => /^https:\/\//.test(config.supabaseUrl || '') &&
   /^(sb_publishable_|eyJ)/.test(config.publishableKey || '') &&
   !config.supabaseUrl.includes('COLE_') && !config.publishableKey.includes('COLE_') &&
-  /^[a-z0-9.-]+\.[a-z]{2,}$/.test(config.loginDomain || '');
-const toMail = user => `${cleanUsername(user)}@${config.loginDomain.trim().toLowerCase()}`;
+  true;
 const isAdmin = () => state.profile?.perfil === 'administrador';
 const canApprove = () => isAdmin() || (state.profile?.perfil === 'lider' && state.profile?.pode_aprovar);
 const isLeader = () => isAdmin() || state.profile?.perfil === 'lider';
@@ -87,9 +124,10 @@ function authUI() {
     <form data-form="signup">
       ${field('sn','Nome completo','text','autocomplete="name" required minlength="3" maxlength="120"')}
       ${field('su','Nome de usuário','text','autocomplete="username" required pattern="[A-Za-z][A-Za-z0-9._-]{2,25}"')}
+      ${field('se','E-mail pessoal','email','autocomplete="email" required maxlength="254"')}
       ${field('sf','Telefone','tel','autocomplete="tel" required inputmode="tel"')}
       ${field('sp','Senha','password','autocomplete="new-password" required minlength="10"')}
-      <p class="helper">Pelo menos 10 caracteres, incluindo letra maiúscula, minúscula, número e símbolo.</p>
+      <p class="helper">Use um e-mail real e seu. Ele é necessário para cadastrar o acesso sem domínio próprio. A senha deve ter 10+ caracteres, letra maiúscula, minúscula, número e símbolo.</p>
       ${field('sc','Código de convite','text',`required value="${esc(state.invitation)}"`)}
       <div style="height:12px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Enviar cadastro</button>
     </form><div style="height:8px"></div><button class="btn ghost" data-a="login">Voltar</button>`;
@@ -117,7 +155,7 @@ function functionChips(person) {
 function approvalsUI() {
   if (!canApprove()) return `<h2>Sem permissão</h2>`;
   const pending=state.people.filter(p=>p.status==='pendente');
-  let h=`<h2>Aprovações</h2><p class="mut">Defina perfil e funções de cada pessoa antes de aprovar.</p><div style="height:12px"></div>`;
+  let h=`<h2>Aprovações</h2><p class="mut">Defina perfil e funções de cada pessoa antes de aprovar.</p><button class="btn ghost" style="margin-top:12px" data-a="refresh-approvals">Atualizar solicitações</button><div style="height:12px"></div>`;
   if (!pending.length) return h+`<div class="card"><p class="mut">Nenhum cadastro aguardando. Quando alguém entrar pelo seu convite, aparece aqui.</p></div>`;
   for (const p of pending) {
     const d=draftOf(p);
@@ -254,7 +292,9 @@ async function loadData() {
 }
 async function boot() {
   if(!isReady()) {render();return;}
+  if (await enforceInactivity()) return;
   await readProfile();
+  if (state.user) markHumanActivity();
   if(state.user && canWork()) {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
@@ -287,22 +327,33 @@ async function handleForm(form) {
       const isEmail=username.includes('@');
       if(isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username))throw new Error('Digite um e-mail válido.');
       if(!isEmail && !/^[a-z][a-z0-9._-]{2,25}$/.test(username))throw new Error('Digite um nome de usuário válido.');
-      // A conta administradora inicial usa e-mail real; as demais contas seguem o identificador de usuário.
-      const {error}=await sb.auth.signInWithPassword({email:isEmail?username:toMail(username),password:val('lp')});
-      if(error)throw new Error('Usuário ou senha incorretos.');
-      state.tab='inicio';await boot();
+      // Administrador inicial pode entrar com e-mail; todos os perfis também podem usar @usuario.
+      if (isEmail) {
+        const {error}=await sb.auth.signInWithPassword({email:username,password:val('lp')});
+        if(error)throw new Error('Usuário ou senha incorretos.');
+      } else {
+        // O servidor resolve @usuario para o e-mail sem revelá-lo ao navegador.
+        const session = await gateway('login',{usuario:username,senha:val('lp')});
+        if (!session?.access_token || !session?.refresh_token) throw new Error('Falha ao iniciar sessão.');
+        const {error} = await sb.auth.setSession({
+          access_token:session.access_token,refresh_token:session.refresh_token,
+        });
+        if(error)throw new Error('Não foi possível iniciar a sessão.');
+      }
+      markHumanActivity(true);
+      state.tab='aprov';await boot();
       if(state.profile?.status==='ativo'&&!state.profile.primeiro_acesso)notify('Bem-vindo ao Escala Kids.');
     } else if(id==='signup') {
       const code=val('sc').match(/[a-f0-9]{64}/)?.[0]||'';
       await gateway('register',{
-        usuario:cleanUsername(val('su')),nome:val('sn'),telefone:val('sf'),senha:val('sp'),codigo:code,
+        usuario:cleanUsername(val('su')),nome:val('sn'),email:val('se').toLowerCase(),telefone:val('sf'),senha:val('sp'),codigo:code,
       });
       state.auth='wait';state.invitation='';render();
     } else if(id==='password') {
       if(val('p1')!==val('p2')) throw new Error('As senhas precisam ser iguais.');
       await gateway('change_password',{senha:val('p1')});
       await sb.auth.signOut({scope:'global'});
-      state.user=null;state.profile=null;state.auth='login';render();
+      state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();render();
       notify('Senha atualizada. Entre novamente com a nova senha.');
     } else if(id==='invite') {
       const data=await gateway('invite',{dias:Number(val('days')),usos:Number(val('uses'))});
@@ -337,13 +388,22 @@ function modal(title, description, action, id, approve=false) {
 }
 async function actionClick(b) {
   const a=b.dataset.a,id=b.dataset.id;
-  if(a==='tab'){state.tab=b.dataset.tab;state.currentInvitation='';render();$('#main').scrollTop=0;return;}
+  if (a === 'refresh-approvals') {
+    if (await enforceInactivity()) return;
+    await loadData(); notify('Solicitações atualizadas.'); return;
+  }
+  if(a==='tab'){
+    state.tab=b.dataset.tab;state.currentInvitation='';
+    if (state.tab === 'aprov' && canApprove()) await loadData();
+    else render();
+    $('#main').scrollTop=0;return;
+  }
   if(a==='login'){state.auth='login';render();return;}
   if(a==='signup'){state.auth='signup';render();return;}
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
   if(a==='out'){
-    await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;
+    await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;forgetHumanActivity();
     state.auth='login';state.drafts={};state.people=[];render();return;
   }
   if(a==='reload'){await boot();if(canWork())notify('Seu acesso foi aprovado.');else notify('Seu cadastro ainda está em análise.');return;}
@@ -375,14 +435,42 @@ $('#app').addEventListener('click', async e=>{const b=e.target.closest('button[d
 
 if(isReady()) {
   sb=createClient(config.supabaseUrl,config.publishableKey,{
-    auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:'escala-kids-auth-v1'},
+    auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:AUTH_STORAGE_KEY},
   });
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='SIGNED_OUT'){state.user=null;state.profile=null;state.auth='login';render();}
+    if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;state.auth='login';render();}
   });
 }
 render();
-boot().catch(()=>notify('Não foi possível conectar. Confira sua internet ou a configuração.',true));
+boot().then(() => {
+  if (expiredOnStartup) notify('Sessão expirada por 14 dias sem atividade. Entre novamente.');
+}).catch(()=>notify('Não foi possível conectar. Confira sua internet ou a configuração.',true));
+// Somente uma interação humana e a abertura do app renovam os 14 dias.
+const captureActivity = () => {
+  if (!state.user) return;
+  if (idleTimedOut()) {void enforceInactivity();return;}
+  markHumanActivity();
+};
+window.addEventListener('pointerdown',captureActivity,{passive:true});
+window.addEventListener('keydown',captureActivity);
+window.addEventListener('focus',() => {
+  if (!state.user) return;
+  if (idleTimedOut()) {void enforceInactivity();return;}
+  markHumanActivity();
+  if (canApprove() && state.tab === 'aprov') void loadData();
+});
+document.addEventListener('visibilitychange',() => {
+  if (document.hidden || !state.user) return;
+  if (idleTimedOut()) {void enforceInactivity();return;}
+  markHumanActivity();
+  if (canApprove() && state.tab === 'aprov') void loadData();
+});
+// Atualização passiva apenas de pedidos visíveis, sem eliminar outras sessões.
+setInterval(() => {
+  if (document.hidden || !state.user || !canApprove() || state.tab !== 'aprov' || state.busy) return;
+  if (idleTimedOut()) {void enforceInactivity();return;}
+  void loadData();
+},60000);
 // PWA: verifica novas versões ao abrir, voltar ao app e periodicamente.
 // A atualização depende de internet e de o navegador buscar o novo service worker.
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
