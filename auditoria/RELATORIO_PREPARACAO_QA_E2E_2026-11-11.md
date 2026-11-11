@@ -1,55 +1,52 @@
-# ⚠️ NÃO PRONTO — Escala Kids QA E2E (11/11/2026)
+# ⚠️ NÃO PRONTO — Escala Kids: Homologação QA (11/11/2026)
 
-## 1. Resumo (3 linhas)
+## 1. Resumo em três linhas
 
-A branch `qa/convites-20261111` tem migrations para Supabase TESTE, função `kids-auth` QA e workflow automático para Auth, RLS, aprovação, recusa, concorrência e Playwright.
-As mudanças do backend QA incluem rollback com conferência, limite por IP + convite/usuário e mensagens `createUser` por código de erro; caso real rejeitado na validação antiga: `ana@🙂.com`.
-O fluxo E2E inteiro ainda **não foi executado**, porque falta configurar os cinco Secrets do Supabase QA. Produção não foi alterada.
+O projeto separado **Teste escala** foi localizado no Supabase (ref `eofoeijyfpptcktiqeah`), e as duas migrations foram aplicadas com sucesso.
+A Edge Function `kids-auth` v1 foi implantada no projeto QA, com RLS habilitado nas quatro tabelas públicas e zero alertas no Security Advisor.
+O E2E completo depende apenas de cadastrar **três GitHub Secrets privados**; não houve nenhuma alteração no projeto público.
 
 ## 2. Testes e evidências
 
 | Teste | Resultado | Evidência |
 |---|---|---|
-| Workflow criado na branch QA | PASSOU (configuração) | `.github/workflows/qa-supabase-e2e.yml` versionado, iniciado pelo GitHub |
-| Trava de Secrets e produção | PASSOU | Execução 43068915610 recusou prosseguir: `FALTAM_SECRETS_QA`, antes de migrar/deployar qualquer banco |
-| Testes unitários e sintaxe | PASSOU | GitHub run 43069347613: 57/57 testes, 0 falhas; checagem sintática de `app.js`, runner E2E e Playwright |
-| Regressão e-mail inválido | PASSOU no ramo | Testes RED anteriores rejeitaram `ana@🙂.com`, e-mail com mais de 64 caracteres no local-part e pontos duplos; teste GREEN posterior 57/57 |
-| Migrations Supabase QA | NÃO VERIFICADO | Arquivos criados; falta projeto QA real e Secrets para `supabase db push` |
-| Deploy função QA | NÃO VERIFICADO | Código na branch, sem deployment possível até configurar projeto QA |
-| Cadastro HTTP real e confirmação SQL | NÃO VERIFICADO | O workflow está escrito, mas guard bloqueou a execução por Secrets ausentes |
-| Aprovação, recusa, login de aprovado | NÃO VERIFICADO | Dependem da primeira criação de conta sintética |
-| JWT RLS pendente/recusado, proibição de INSERT/UPDATE | NÃO VERIFICADO | Implementados no script E2E; não executados contra QA |
-| Duplicidade, rollback e concorrência | NÃO VERIFICADO | Testes implementados, faltam credenciais de QA |
-| Limite IP compartilhado e 429 HTTP | NÃO VERIFICADO | Há prova SQL transacional anterior, mas ainda falta novo teste HTTP de QA |
-| Playwright Android/Chrome + iPhone/WebKit | NÃO VERIFICADO | Scripts escritos, workflow não chegou à instalação dos navegadores |
-| Limpeza zero resíduos após E2E | NÃO VERIFICADO | Rotina `finally` do Actions é obrigatória, mas não houve contas QA criadas |
-| Estado da produção | SEM MUDANÇA | Apenas branch de QA recebeu commits; produção segue PWA v1.2.2 e função kids-auth v5 |
+| Projeto QA isolado | ✅ Confirmado | Ref `eofoeijyfpptcktiqeah` versus produção `pntzfuxwkjreugxzovjj`; organização igual, projeto próprio |
+| Migrations QA | ✅ Aplicadas | Supabase `list_migrations`: `20261111174456 qa_schema_escala_kids_v122`; `20261111174505 qa_limitador_rede_compartilhada` |
+| Banco pronto para testes | ✅ Estrutura comprovada | Tabelas `perfis`, `convites`, `funcoes_pessoa`, `auditoria`; 4 com RLS ativo |
+| Grants de ações privilegiadas | ✅ Inspecionados | `emitir_convite`, `finalizar_cadastro`, `revisar_cadastro` e limitador: `anon=false`, `authenticated=false`, `service_role=true` |
+| Segurança do QA | ✅ Advisor limpo | `get_advisors(type=security)`: `lints=[]` |
+| Função real de teste | ✅ Implantada | Supabase `kids-auth`: ACTIVE, versão 1, `verify_jwt=false`; função verifica a origem e autenticação de cada ação |
+| Banco inicialmente vazio | ✅ Confirmado | `auth.users=0`, `perfis=0`, `convites=0`, `auditoria=0` |
+| Testes de sintaxe e unitários | ✅ Aprovados | GitHub Actions `43069347613`: 57 testes, 0 falhas |
+| Workflow E2E QA | ⚠️ Bloqueado no preflight | Sem credenciais privadas em Secrets GitHub; aborta antes de alterar banco |
+| Cadastro real, recusa, aprovação, JWT, concorrência | NÃO VERIFICADO | Workflow ainda não recebeu Secrets QA |
+| Playwright Android/iPhone, 429, limpeza final | NÃO VERIFICADO | Exigem execução completa do workflow QA |
 
-## 3. Não verificado (crítico)
+## 3. NÃO VERIFICADO
 
-Todas as etapas de E2E HTTP real, browser, privilégios com JWT real, concorrência, deploy e limpeza de contas sintéticas seguem pendentes, pelo mesmo motivo: **projeto/Secrets de QA ainda não conectados**.
-
-As migrations foram geradas a partir do schema real, mas seu sucesso numa base vazia ainda não foi provado. O workflow foi desenhado para marcar a execução em vermelho se algum teste falhar. O método exige novo teste depois do deploy efetivo no QA e antes de promover.
+Os testes E2E com autenticação real, QR longo/código curto, aprovação/rejeição, RLS pendente e recusado, concorrência, navegador Playwright, rate limit e limpeza após cadastros permanecem pendentes. O servidor e schema QA foram instalados, mas **não existe prova de cadastro real concluído**.
 
 ## 4. Riscos
 
-- A nova migration pode necessitar ajustes quando aplicada ao Supabase QA.
-- O teste de navegador WebKit em Linux não é prova em iPhone físico.
-- O teste e2e pode revelar outros bugs de Auth ou rollback ainda não reproduzidos.
-- A produção não recebe mudanças automaticamente de QA; não houve publicação de correções do fluxo de convite.
+- A primeira execução E2E pode revelar erros de runtime, deployment CLI ou regras de cadastro que não apareceram nos testes unitários.
+- Tokens de automação devem ter escopo mínimo no projeto QA. `sb_secret_` fica apenas nos Secrets GitHub, nunca no frontend.
+- As correções estão na branch QA, ainda não testadas nem publicadas em produção.
+- O motor WebKit em Linux não substitui iPhone físico.
 
-## 5. O que precisa fazer
+## 5. Ação humana mínima (três Secrets)
 
-Criar um projeto **Escala Kids QA** no Supabase e salvar os **cinco Secrets de QA** descritos em `testes/CONFIGURAR_SUPABASE_QA.md`. Depois executar o workflow na branch QA, sem compartilhar nenhum valor no chat. Não realizar testes com voluntários reais.
+Abrir https://github.com/gabriellve800-star/Escala-Kids-/settings/secrets/actions e salvar:
+1. `QA_SUPABASE_ACCESS_TOKEN`: token pessoal para CI gerado em https://supabase.com/dashboard/account/tokens;
+2. `QA_SUPABASE_DB_PASSWORD`: senha do banco Teste escala;
+3. `QA_SUPABASE_SECRET_KEY`: chave `sb_secret_...` do projeto **Teste escala** (Project Settings → API Keys).
+
+Não enviar nenhum valor no chat. ID e chave publicável do QA já foram conectados pelo assistente.
 
 ## 6. Estado
 
-**⚠️ NÃO PRONTO**. Nenhuma liberação de produção será realizada enquanto o workflow E2E não estiver inteiramente verde e a limpeza final não demonstrar zero resíduos.
+**⚠️ NÃO PRONTO** — migrations e função QA implantadas e verificadas, mas testes críticos ainda não executados. Produção continua v1.2.2 / `kids-auth` v5.
 
-### Links de prova
-
-- Setup QA: https://github.com/gabriellve800-star/Escala-Kids-/blob/qa/convites-20261111/testes/CONFIGURAR_SUPABASE_QA.md
-- Código/QA: https://github.com/gabriellve800-star/Escala-Kids-/tree/qa/convites-20261111
-- Workflow QA: https://github.com/gabriellve800-star/Escala-Kids-/actions/workflows/qa-supabase-e2e.yml
-- Execução bloqueada sem Secrets: https://github.com/gabriellve800-star/Escala-Kids-/actions/runs/43068915610
-- Testes unitários: https://github.com/gabriellve800-star/Escala-Kids-/actions/runs/43069347613
+Links:
+- [Workflow E2E](https://github.com/gabriellve800-star/Escala-Kids-/actions/workflows/qa-supabase-e2e.yml)
+- [Manual dos 3 Secrets](https://github.com/gabriellve800-star/Escala-Kids-/blob/qa/convites-20261111/testes/CONFIGURAR_SUPABASE_QA.md)
+- [Branch QA](https://github.com/gabriellve800-star/Escala-Kids-/tree/qa/convites-20261111)
