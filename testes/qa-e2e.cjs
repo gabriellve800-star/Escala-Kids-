@@ -244,6 +244,35 @@ async function securityActive(persona){
  const r=await call('invite',{dias:1,usos:1},(await c.auth.getSession()).data.session.access_token);
  assert.equal(r.status,403,'voluntário não deve emitir convite');
 }
+async function verifyUi(){
+ const s=load();
+ const users=await allAuth();
+ let checked=0;
+ for(const p of ['android-chrome','iphone-webkit']){
+   const suffix=p==='android-chrome'?'a':'i';
+   const types={qr:'ui',short:'uc',weak:'uw',double:'ud',offline:'uo'};
+   for(const [kind,part] of Object.entries(types)){
+     const usuario=s.prefix+'_'+part+suffix;
+     const expectedEmail=usuario+'@example.com';
+     const matches=users.filter(x=>x.email===expectedEmail);
+     assert.equal(matches.length,1,'registro do browser sem conta Auth: '+kind);
+     const {data:profile,error:pe}=await svc.from('perfis').select('id,status,usuario').eq('id',matches[0].id).single();
+     check(profile,pe,'perfil no banco do navegador');
+     assert.equal(profile.status,'pendente');
+     assert.equal(profile.usuario,usuario);
+     const inv=s.ui[p][kind];
+     const {data:used,error:ie}=await svc.from('convites').select('usos').eq('id',inv.id).single();
+     check(used,ie,'convite usado no navegador');
+     assert.equal(used.usos,1,'toque duplo/fluxo '+kind+' gerou uso incorreto');
+     const {data:audit,error:ae}=await svc.from('auditoria').select('id').eq('alvo',profile.id).eq('acao','cadastro_pendente');
+     check(audit,ae,'auditoria do navegador');
+     assert.equal(audit.length,1,'auditoria ausente no fluxo '+kind);
+     checked++;
+   }
+ }
+ assert.equal(checked,10);
+ record('10 cadastros de Chrome/WebKit confirmados no Auth, perfis pendentes, convite usado e auditoria');
+}
 async function rate(){
  const s=load();
  const item=await invite(s);
@@ -300,6 +329,7 @@ async function cleanup(){
  try{
   if(mode==='setup')await setup();
   else if(mode==='integration')await integration();
+  else if(mode==='verify-ui')await verifyUi();
   else if(mode==='rate')await rate();
   else if(mode==='cleanup')await cleanup();
   else throw Error('Modo QA desconhecido');
