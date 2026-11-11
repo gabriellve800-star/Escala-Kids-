@@ -48,7 +48,7 @@ async function call(action,payload={},jwt){
  return {status:result.status,body};
 }
 async function verifyStatic(){
- const items=['index.html','app.js','sw.js','config.js'];
+ const items=['index.html','app.js','agenda.js','styles.css','sw.js','config.js'];
  for(const item of items){
   const b=await fetch(site+item+'?smoke='+encodeURIComponent(prefix),{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(15000)});
   assert.equal(b.status,200,'public HTTP '+item+' '+b.status);
@@ -144,6 +144,23 @@ async function verifyServiceWorker(){
   console.log('PROD_SMOKE_SW_OK: nova versão ativa e cache antigo eliminado');
  }finally{await context.close();await browser.close()}
 }
+async function volunteerAgendaSmoke(persona,day){
+ const browser=await chromium.launch({headless:true});
+ const context=await browser.newContext({...devices['Pixel 7'],serviceWorkers:'allow'});
+ const page=await context.newPage();
+ try{
+  await page.goto(site,{waitUntil:'domcontentloaded'});
+  await page.locator('form[data-form=login] [name=lu]').fill(persona.usuario);
+  await page.locator('form[data-form=login] [name=lp]').fill(persona.senha);
+  await page.locator('form[data-form=login] button[type=submit]').click();
+  await expect(page.locator('h2').filter({hasText:'Minha Escala'})).toBeVisible({timeout:30000});
+  await expect(page.locator('.agenda-next-card')).toContainText('Maternal');
+  await page.locator('button[data-a=agenda-day][data-day="'+day+'"]').click();
+  await page.locator('button[data-a=agenda-toggle][data-culto=domingo_manha]').click();
+  await expect(page.locator('button[data-a=agenda-toggle][data-culto=domingo_manha]')).toHaveAttribute('aria-pressed','true',{timeout:30000});
+  return true;
+ }finally{await context.close();await browser.close();}
+}
 async function execution(){
  const pre=await counts();
  console.log('PROD_SMOKE_BASELINE '+JSON.stringify(pre));
@@ -182,6 +199,24 @@ async function execution(){
  const p=await call('review',{id:id1,aprovar:true,perfil:'voluntario',funcoes:['professor'],pode_aprovar:false},jwt);
  assert.equal(p.status,200,'aprovação HTTP '+p.status);
  await verifyRls(approved,'ativo');
+ // O card só anuncia uma escala que foi realmente publicada pelo administrador.
+ const now=new Date();
+ const futureMonth=new Date(now.getFullYear(),now.getMonth()+1,1,12);
+ let sunday=null;
+ for(let n=1;n<=31;n++){
+  const d=new Date(futureMonth.getFullYear(),futureMonth.getMonth(),n,12);
+  if(d.getMonth()!==futureMonth.getMonth())break;
+  if(d.getDay()===0){sunday=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(n).padStart(2,'0')].join('-');break;}
+ }
+ assert(sunday,'domingo de teste indisponível');
+ const assigned=await cl.from('escalas').insert({pessoa_id:id1,dia:sunday,culto:'domingo_manha',horario:'09:00',turma:'Maternal',funcao:'professor'});
+ check(assigned.error,'escala sintética por administrador');
+ await volunteerAgendaSmoke(approved,sunday);
+ const own=publicClient();
+ check((await own.auth.signInWithPassword({email:approved.email,password:approved.senha})).error,'login para disponibilidade');
+ const av=await own.from('disponibilidades').select('dia,culto').eq('dia',sunday).eq('culto','domingo_manha');
+ check(av.error,'ler disponibilidade real');assert.equal(av.data.length,1);
+ console.log('PROD_SMOKE_AGENDA_OK: card próxima escala, login voluntário, calendário e disponibilidade salvos no site público');
  const logged=await call('login',{usuario:approved.usuario,senha:approved.senha});
  assert.equal(logged.status,200,'login aprovado HTTP '+logged.status);
  assert(logged.body.access_token&&logged.body.refresh_token);
