@@ -8,7 +8,7 @@ const serverKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 // Identidades agora usam e-mails reais: não é necessário domínio próprio.
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const appOrigin = 'https://gabriellve800-star.github.io'; // Origem pública.
-const qaTestOrigin = Deno.env.get('QA_TEST_ORIGIN') || ''; // Somente no projeto de TESTE.
+const qaTestOrigin = url === 'https://eofoeijyfpptcktiqeah.supabase.co' ? 'http://localhost:4173' : ''; // Exclusivo do projeto QA identificado.
 const allowedOrigins = new Set([appOrigin,qaTestOrigin].filter(Boolean));
 const rateSalt = Deno.env.get('RATE_LIMIT_PEPPER') || serverKey; // Segredo privado do servidor.
 const admin = createClient(url, serverKey, {
