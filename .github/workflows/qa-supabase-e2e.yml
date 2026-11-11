@@ -117,6 +117,8 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
       - name: Navegador real no runner — QR, código, offline, toque duplo, cache
         run: npm run test:qa:browser
+      - name: Conferir os 10 cadastros do navegador no banco, Auth, convites e auditoria
+        run: npm run test:qa:verify-ui
       - name: Limite na mesma rede e resposta 429
         run: npm run test:qa:rate
       - name: Limpeza obrigatória com comprovação zero resíduos
