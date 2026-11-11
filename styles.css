@@ -91,3 +91,52 @@ select.in{appearance:auto}.toast{overflow-wrap:anywhere}
 .pwa-update-btn{border:0;background:var(--pri);color:var(--on);font:700 14px var(--hd);padding:10px 16px;border-radius:999px;cursor:pointer}
 .pwa-update-btn:focus-visible{outline:3px solid var(--pri);outline-offset:3px}
 @media (prefers-reduced-motion: reduce){#pwa-update{scroll-behavior:auto}}
+
+
+/* v1.2.4 — Calendário de escala e disponibilidade do voluntário. */
+.agenda-next-card{background:var(--pri);color:var(--on);border-radius:30px 30px 30px 9px;padding:24px;margin:17px 0 14px;box-shadow:0 12px 30px rgba(25,45,160,.12)}
+.agenda-eyebrow{font-size:11px;font-weight:800;letter-spacing:.14em;opacity:.84}
+.agenda-next-card h3{font:800 24px/1.18 var(--hd);margin:9px 0}
+.agenda-next-day{display:flex;align-items:center;gap:16px;margin:16px 0 10px}
+.agenda-next-day strong{font:800 78px/.86 var(--hd);letter-spacing:-.065em}
+.agenda-next-day div{font:700 18px/1.25 var(--hd);max-width:165px;text-transform:capitalize}
+.agenda-next-info{margin:8px 0 14px;opacity:.94;font-size:15px}
+.agenda-next-tag{display:inline-flex;padding:7px 12px;border-radius:14px;background:rgba(255,255,255,.16);font-size:12px;font-weight:800}
+.agenda-panel{padding:18px 14px;margin-bottom:14px}
+.agenda-section-title{display:flex;gap:12px;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.agenda-section-title h3{font:800 18px var(--hd)}
+.agenda-section-title span{font-size:12px;font-weight:700;color:var(--mut);white-space:nowrap;text-transform:capitalize}
+.agenda-help{margin:0 0 12px;font-size:13px}
+.agenda-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin:14px 0}
+.agenda-weekday{font-size:11px;text-align:center;font-weight:800;color:var(--mut);padding:5px 0}
+.agenda-date{min-height:43px;border:1px solid transparent;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;font:700 13px var(--bd);color:var(--ink);background:var(--bg);position:relative}
+.agenda-date i{display:block;width:5px;height:5px;border-radius:50%;background:var(--pri)}
+.agenda-date.agenda-assigned{border-color:var(--pri);background:var(--mint)}
+.agenda-date-button{cursor:pointer;border:1px solid var(--line);background:var(--card);font-family:var(--bd)}
+.agenda-date-button.agenda-selected{outline:2px solid var(--pri);outline-offset:0;background:var(--bg)}
+.agenda-date-button.agenda-available{background:var(--mint);color:var(--mintink)}
+.agenda-date-button.agenda-available i{background:var(--mintink)}
+.agenda-date-muted{background:transparent;color:var(--mut);opacity:.55}
+.agenda-selected-title{font-weight:800;text-transform:capitalize;margin:0 0 9px;font-size:14px}
+.agenda-select-panel{background:var(--bg);border-radius:18px;padding:14px;margin:6px 0 12px}
+.agenda-slots{display:flex;flex-wrap:wrap;gap:8px}
+.agenda-slot{border:1px solid var(--line);border-radius:999px;color:var(--ink);background:var(--card);font:700 13px var(--bd);padding:10px 13px;min-height:42px;cursor:pointer}
+.agenda-slot.on{background:var(--mint);color:var(--mintink);border-color:var(--mintink)}
+.agenda-hint{font-size:12px;color:var(--mut);margin-top:9px}
+.agenda-count{font-size:13px;font-weight:700;color:var(--ink);text-align:center;margin:12px 0 2px}
+.agenda-empty{font-size:13px;color:var(--mut);padding:10px 0}
+.agenda-items{border-top:1px solid var(--line);margin-top:8px}
+.agenda-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.agenda-row:last-child{border:0}
+.agenda-row-day{font:800 14px var(--hd);min-width:60px}
+.agenda-row strong{font-size:13px;display:block}
+.agenda-row small{font-size:12px;color:var(--mut);display:block}
+.agenda-team-row{display:flex;gap:10px;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.agenda-team-row:last-child{border-bottom:0}
+.agenda-team-row strong{display:block;font-size:14px}
+.agenda-team-row small{color:var(--mut);font-size:12px;display:block}
+.agenda-remove{background:transparent;border:1px solid var(--line);border-radius:999px;padding:8px 10px;font:700 12px var(--bd);color:var(--mut);cursor:pointer}
+.agenda-panel form{margin-top:12px}
+.agenda-panel .field{margin:8px 0}
+.agenda-panel input.in,.agenda-panel select.in{min-width:0}
+@media(max-width:390px){.agenda-section-title{flex-wrap:wrap;gap:3px}.agenda-calendar{gap:3px}.agenda-date{min-height:40px}.agenda-panel{padding:16px 12px}nav button{font-size:10px;min-width:0}}
