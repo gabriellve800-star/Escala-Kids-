@@ -1,0 +1,65 @@
+name: Escala Kids — smoke controlado no site público (produção)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.js"
+      - "index.html"
+      - "sw.js"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: escala-kids-prod-smoke
+  cancel-in-progress: false
+jobs:
+  publicacao:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/main'
+    env:
+      PROD_SUPABASE_SECRET_KEY: ${{ secrets.PROD_SUPABASE_SECRET_KEY }}
+    steps:
+      - name: Bloquear sem chave privada de produção; nunca usar QA
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$PROD_SUPABASE_SECRET_KEY" != sb_secret_* ]]; then
+            echo "::error::PROD_SECRET_MISSING: sem chave de teste/limpeza no cofre GitHub. Nenhuma conta criada."
+            exit 1
+          fi
+          echo "PROD_SMOKE_KEY_READY (valor oculto)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Instalar dependências fixadas
+        id: dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Aguardar GitHub Pages servir a v1.2.3 (sem criar contas)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for n in $(seq 1 30); do
+            if curl -fsSL "https://gabriellve800-star.github.io/Escala-Kids-/index.html?probe=$GITHUB_RUN_ID-$n" | grep -q 'Escala Kids · v1.2.3'; then
+              echo "PAGES_VERSION_REACHABLE"
+              exit 0
+            fi
+            sleep 8
+          done
+          echo "::error::PAGES_VERSION_NOT_READY; nenhuma conta sintética criada."
+          exit 1
+      - name: Instalar navegadores Android Chrome e Safari WebKit emulado
+        run: npx playwright install --with-deps chromium webkit
+      - name: Teste REAL do site público — hashes, cache, QR, código, aprovação, recusa e RLS
+        id: smoke
+        run: node testes/prod-smoke.cjs run
+      - name: Limpeza obrigatória EXCLUSIVAMENTE de IDs exatos criados pelo teste
+        if: ${{ always() && steps.dependencies.outcome == 'success' && steps.preflight.outcome == 'success' }}
+        run: node testes/prod-smoke.cjs cleanup
+      - name: Resultado seguro (produção não zerada)
+        if: ${{ success() }}
+        run: |
+          echo "PROD_SMOKE_SUCCESS: site, app, worker, Auth, perfis e convites verificados; limpeza só de IDs sintéticos."
