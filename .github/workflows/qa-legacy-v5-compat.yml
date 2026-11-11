@@ -69,4 +69,5 @@ jobs:
           echo "QA_NEW_FUNCTION_RESTORED"
       - name: Relatório final do teste legado
         if: ${{ success() }}
-        run: echo "LEGACY_V5_COMPAT_PASS: migration nova preservou cadastro, QR, aprovação e login da v5; QA restaurado; zero resíduos."
+        run: |
+          echo "LEGACY_V5_COMPAT_PASS: migration nova preservou cadastro, QR, aprovação e login da v5; QA restaurado; zero resíduos."
