@@ -2,6 +2,7 @@
 // Deploy: supabase functions deploy kids-auth --no-verify-jwt
 // Credencial privilegiada fica SOMENTE no ambiente da função.
 import { createClient } from 'npm:@supabase/supabase-js@2.57.0';
+import { mapCreateUserError } from './auth-errors.mjs';
 
 const url = Deno.env.get('SUPABASE_URL') ?? '';
 const serverKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -196,14 +197,8 @@ Deno.serve(async (req) => {
         if (ae || !created.user) {
           const code = String(ae?.code || 'AUTH_ERROR');
           console.warn('escala_register_auth_error',{request_id:requestId,stage:'createUser',code,status:ae?.status||0});
-          if (['email_exists','email_address_not_authorized','user_already_exists','email_address_invalid'].includes(code)) {
-            return err('E-mail já cadastrado ou indisponível. Use outro e-mail válido.',409,{field:'email',request_id:requestId});
-          }
-          if (code==='weak_password' || code==='password_too_short') {
-            return err('Senha recusada pelo serviço. Crie uma senha mais forte, com 10+ caracteres, números, maiúsculas e símbolos.',422,{field:'senha',request_id:requestId});
-          }
-          if (ae?.status===429) return err('Muitas tentativas. Aguarde antes de tentar novamente.',429,{request_id:requestId});
-          return err('Não foi possível criar o acesso. Tente novamente mais tarde.',503,{request_id:requestId});
+          const mapped = mapCreateUserError(ae);
+          return err(mapped.message,mapped.status,{...(mapped.field?{field:mapped.field}:{}),request_id:requestId});
         }
         try {
           await rpc('finalizar_cadastro', {
