@@ -1,7 +1,7 @@
 name: Auditoria Escala Kids
 on:
   push:
-    branches: [main, 'qa/**']
+    branches: ['qa/**']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -15,5 +15,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Conferir sintaxe dos arquivos de testes, app e navegador
+        run: |
+          node --check testes/qa-e2e.cjs
+          node --check testes/qa-ui.spec.cjs
+          node --check testes/playwright.config.cjs
+          node --check app.js
       - name: Executar somente testes unitarios sem tocar no Supabase de producao
         run: npm run test:unit
