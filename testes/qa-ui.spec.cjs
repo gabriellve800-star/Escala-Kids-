@@ -29,6 +29,7 @@ for(const name of ['android-chrome','iphone-webkit']){
   test.use(name==='android-chrome'
     ? {...devices['Pixel 7'],browserName:'chromium'}
     : {...devices['iPhone 13'],browserName:'webkit'});
+  test.beforeEach(({},testInfo)=>test.skip(testInfo.project.name!==name,'Executar apenas no dispositivo correspondente'));
   const ui=state.ui[name];
   test('QR longo: inscrição real no navegador',async({page})=>{
    await page.goto(root+'?convite='+encodeURIComponent(ui.qr.codigo));
@@ -53,7 +54,7 @@ for(const name of ['android-chrome','iphone-webkit']){
    p.usuario=state.prefix+'_uw'+letter[name];
    p.email=p.usuario+'@example.com';
    await fill(page,p);
-   await page.locator('[name=sp]').fill('fraca123');
+   await page.locator('[name=sp]').fill('fraca123456');
    await page.locator('form[data-form=signup] button[type=submit]').click();
    await expect(page.getByText(/Senha: use de 10 a 128 caracteres/)).toBeVisible();
    await expect(page.locator('[name=sn]')).toHaveValue(p.nome);
