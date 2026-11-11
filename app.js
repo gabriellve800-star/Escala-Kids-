@@ -3,6 +3,7 @@
 // Funções de escala, check-in e crianças serão conectadas nas próximas fases.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle';
 import { config } from './config.js';
+import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.4';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -103,6 +104,7 @@ const state = {
   invitation:normalizeInvite(rawInvite) || '', inviteVerified:false, people:[], functions:[], invites:[], audit:[],
   tab:'inicio', drafts:{}, modal:null, busy:false, toast:'', error:'',
   currentInvitation:null, pendingCount:0, demoTheme:'',
+  schedules:[], availability:[], agendaError:false, selectedAvailabilityDate:'',
 };
 let sb;
 let toastTimer;
@@ -134,17 +136,17 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.3</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.4</small>');
   }
   $('#seg').innerHTML=state.user && canWork()
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
 }
 function tabs() {
   if (!state.user || !canWork()) return [];
-  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['convites','Convites','cal'],['auditoria','Auditoria','user']];
+  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
   if (isLeader()) return [['escala','Escala','cal'],['equipe','Equipe','users'],
     ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
-  return [['inicio','Início','home'],['disp','Disponibilidade','cal'],['perfil','Perfil','user']];
+  return [['escala','Minha Escala','cal'],['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
   $('#nav').innerHTML=tabs().map(([id,name,icon]) =>
@@ -297,10 +299,12 @@ function badgesUI() {
   return `<div class="badges">${b.map(x=>`<div class="badge"><div class="b" style="background:${x[1]};color:${x[2]}"><svg class="i" style="width:30px;height:30px" viewBox="0 0 24 24">${x[3]}</svg></div>${x[0]}</div>`).join('')}</div>`;
 }
 function homeUI() {
-  return `<div class="hero"><p>Seu próximo turno</p><div style="margin:12px 0 14px"><h2 style="font-size:26px">Aguardando primeira escala</h2></div>
-    <p>As escalas reais serão ativadas na fase 2.</p><button class="btn sun" disabled>Fazer check-in</button></div>
+  const upcoming=nextShift(state.schedules.filter(x=>x.pessoa_id===state.user?.id));
+  return `<div class="hero"><p>Seu próximo turno</p><h2 style="font-size:26px;margin:12px 0">${upcoming?esc(new Date(upcoming.dia+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})):'Aguardando sua primeira escala'}</h2>
+    <p>${upcoming?esc(CULTOS[upcoming.culto]||upcoming.culto)+' · '+esc(shortTime(upcoming.horario))+' · '+esc(upcoming.turma):'Quando a liderança publicar sua escala, ela aparecerá no calendário.'}</p>
+    <button class="btn sun" type="button" data-a="agenda-open">Ver minha escala</button></div>
     <div class="card"><h3>Seus selos</h3><p class="mut" style="margin:4px 0 12px">Cada selo reconhece uma forma de servir bem.</p>${badgesUI()}</div>
-    <div class="card"><h3>Santa Ceia</h3><p class="mut">Quem serviu em uma Santa Ceia descansa da seguinte. Essa regra será aplicada às escalas reais na fase 2.</p></div>`;
+    <div class="card"><h3>Santa Ceia</h3><p class="mut">Quem serviu em uma Santa Ceia descansa da seguinte. Essa regra será considerada no planejamento de futuras escalas.</p></div>`;
 }
 function profileUI() {
   const p=state.profile;
@@ -325,8 +329,10 @@ function activeUI() {
     case 'auditoria':return auditUI();
     case 'equipe':return teamUI();
     case 'perfil':return profileUI();
-    case 'disp':return waitingUI('Quando você pode servir?','As disponibilidades reais serão ativadas na fase 2.');
-    case 'escala':return waitingUI('Escala','A geração e publicação reais das 12 vagas serão ativadas na fase 2.');
+    case 'escala':return state.agendaError?
+      '<h2>Minha Escala</h2><div class="alert">Não foi possível carregar as escalas. Suas outras funções continuam disponíveis.</div><button class="btn ghost" data-a="agenda-refresh">Tentar novamente</button>':
+      isLeader()?leaderAgendaUI({rows:state.schedules,availability:state.availability,people:state.people,labels:FN,esc}):
+      volunteerAgendaUI({rows:state.schedules.filter(x=>x.pessoa_id===state.user?.id),availability:state.availability,selectedDate:state.selectedAvailabilityDate,labels:FN,esc});
     default:return homeUI();
   }
 }
@@ -367,6 +373,17 @@ async function loadData() {
   state.invites=canApprove()?res[idx++].data||[]:[];
   state.pendingCount=canApprove()?state.people.filter(p=>p.status==='pendente').length:0;
   state.audit=isAdmin()?res[idx++].data||[]:[];
+  // Consultas isoladas: se a agenda estiver indisponível, não prejudicar cadastro, login ou convites.
+  const agendaRes=await Promise.all([
+    sb.from('escalas').select('id,pessoa_id,dia,culto,horario,turma,funcao').gte('dia',firstMonth()).order('dia').limit(500),
+    sb.from('disponibilidades').select('pessoa_id,dia,culto').gte('dia',firstMonth(1)).lt('dia',firstMonth(2)).order('dia').limit(800),
+  ]);
+  state.agendaError=agendaRes.some(x=>x.error);
+  state.schedules=state.agendaError?[]:agendaRes[0].data||[];
+  state.availability=state.agendaError?[]:agendaRes[1].data||[];
+  const target=firstMonth(1);
+  if(!state.selectedAvailabilityDate || state.selectedAvailabilityDate<target || state.selectedAvailabilityDate>=firstMonth(2))
+    state.selectedAvailabilityDate=monthDays(target).find(d=>validSlot(d,'domingo_manha')||validSlot(d,'quarta_noite'))||target;
   state.drafts={};render();
 }
 async function boot() {
@@ -470,6 +487,19 @@ async function handleForm(form) {
       await sb.auth.signOut({scope:'global'});
       state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();render();
       notify('Senha atualizada. Entre novamente com a nova senha.');
+    } else if(id==='schedule') {
+      if(!isLeader())throw new Error('Apenas a liderança pode publicar escalas.');
+      const pessoa_id=val('agenda-person'),dia=val('agenda-date'),culto=val('agenda-culto');
+      const horario=val('agenda-time'),turma=val('agenda-turma').replace(/\s+/g,' '),funcao=val('agenda-funcao');
+      const p=state.people.find(x=>x.id===pessoa_id);
+      if(!p || p.status!=='ativo' || p.primeiro_acesso)throw new Error('Selecione uma pessoa ativa.');
+      if(!validSlot(dia,culto))throw new Error('Confira o dia: domingo manhã/noite ou quarta-feira à noite.');
+      if(dia<isoLocal(new Date()))throw new Error('Escolha uma data atual ou futura.');
+      if(!/^\d{2}:\d{2}$/.test(horario)||turma.length<2||turma.length>80||!Object.keys(FN).includes(funcao))
+        throw new Error('Informe horário, turma e função válidos.');
+      const {error}=await sb.from('escalas').upsert({pessoa_id,dia,culto,horario,turma,funcao},{onConflict:'pessoa_id,dia,culto'});
+      if(error)throw new Error('Não foi possível publicar a escala. Confira os dados e as permissões.');
+      await loadData();notify('Escala publicada para o voluntário.');
     } else if(id==='invite') {
       const data=await gateway('invite',{dias:Number(val('days')),usos:Number(val('uses'))});
       // Só o navegador do emissor recebe o token em claro; no banco fica apenas hash.
@@ -509,6 +539,11 @@ async function confirmAction() {
       await gateway('manage',{id:p.id,...d});notify('Permissões atualizadas.');
     } else if(m.action==='revoke') {
       await gateway('revoke_invite',{id:m.id});notify('Convite revogado.');
+    } else if(m.action==='delete-schedule') {
+      if(!isLeader())throw new Error('Somente a liderança pode retirar escalas.');
+      const {error}=await sb.from('escalas').delete().eq('id',m.id);
+      if(error)throw new Error('Não foi possível remover esta escala.');
+      notify('Escala removida.');
     }
     await loadData();
   } catch(e) {notify(showError(e),true);} finally {state.busy=false;render();}
@@ -521,6 +556,33 @@ async function actionClick(b) {
   if (a === 'refresh-approvals') {
     if (await enforceInactivity()) return;
     await loadData(); notify('Solicitações atualizadas.'); return;
+  }
+  if(a==='agenda-open'){state.tab='escala';render();$('#main').scrollTop=0;return;}
+  if(a==='agenda-refresh'){await loadData();return;}
+  if(a==='agenda-day'){
+    if(!canWork()||!validSlot(b.dataset.day,'domingo_manha')&&!validSlot(b.dataset.day,'quarta_noite'))return;
+    state.selectedAvailabilityDate=b.dataset.day;render();return;
+  }
+  if(a==='agenda-toggle'){
+    if(!canWork()||state.busy||!validSlot(b.dataset.day,b.dataset.culto))return;
+    if(b.dataset.day<firstMonth(1)||b.dataset.day>=firstMonth(2)){notify('A disponibilidade só pode ser informada para o próximo mês.',true);return;}
+    const payload={pessoa_id:state.user.id,dia:b.dataset.day,culto:b.dataset.culto};
+    const has=state.availability.some(x=>x.pessoa_id===payload.pessoa_id&&x.dia===payload.dia&&x.culto===payload.culto);
+    state.busy=true;b.disabled=true;
+    try{
+      const result=has?await sb.from('disponibilidades').delete().match(payload):
+        await sb.from('disponibilidades').insert(payload);
+      if(result.error)throw new Error('Não foi possível salvar a disponibilidade.');
+      await loadData();
+      notify(has?'Disponibilidade retirada.':'Disponibilidade registrada!');
+    }catch(e){notify(showError(e),true);}finally{state.busy=false;b.disabled=false;}
+    return;
+  }
+  if(a==='agenda-remove'){
+    if(!isLeader())return;
+    const target=state.schedules.find(x=>x.id===id);
+    if(target)modal('Remover escala','Esta escala deixará de aparecer para o voluntário.','delete-schedule',target.id);
+    return;
   }
   if(a==='tab'){
     state.tab=b.dataset.tab;state.currentInvitation=null;
