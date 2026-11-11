@@ -11,13 +11,25 @@ const PF = { administrador:'Administrador', lider:'Líder', voluntario:'Voluntá
 const cleanUsername = (s) => String(s || '').trim().toLowerCase();
 
 // Validação antes de enviar: informa o campo a corrigir.
+const emailValido = (email) => {
+  if (typeof email !== 'string' || email.length > 254) return false;
+  const pieces=email.split('@');
+  if (pieces.length!==2) return false;
+  const [local,host]=pieces;
+  if (!local || local.length>64 || local.startsWith('.') || local.endsWith('.') ||
+      local.includes('..') || !/^[a-z0-9._%+-]+$/i.test(local)) return false;
+  const labels=host.split('.');
+  return labels.length>=2 && labels.every(x=>x.length>0 && x.length<=63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(x)) && labels[labels.length-1].length>=2;
+};
+
 function erroCadastroLocal({usuario,nome,email,telefone,senha,codigo}) {
   if (!/^[a-z][a-z0-9._-]{2,25}$/.test(usuario))
     return {field:'su',message:'Nome de usuário: use 3 a 26 caracteres, começando com letra, sem espaços ou acentos.'};
   if (nome.length<3 || nome.length>120)
     return {field:'sn',message:'Nome completo: informe de 3 a 120 caracteres.'};
-  if (email.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    return {field:'se',message:'E-mail inválido. Confira o endereço, incluindo o trecho depois do @.'};
+  if (!emailValido(email))
+    return {field:'se',message:'E-mail inválido. Confira o endereço e use até 64 caracteres antes do @.'};
   const tel=telefone.replace(/[^\d+]/g,'');
   if (!/^\+?\d{10,15}$/.test(tel))
     return {field:'sf',message:'Telefone inválido. Informe DDD e número, por exemplo (11) 99999-9999.'};
