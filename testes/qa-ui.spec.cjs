@@ -116,6 +116,17 @@ test('Minha Escala: voluntário vê próxima turma e salva disponibilidade do m�
  await page.locator('form[data-form=login] [name=lu]').fill(volunteer.usuario);
  await page.locator('form[data-form=login] [name=lp]').fill(volunteer.senha);
  await page.locator('form[data-form=login] button[type=submit]').click();
+ const menu=page.locator('nav button[data-a=tab][data-tab=escala]');
+ try {
+   await expect(menu).toBeVisible({timeout:25000});
+ } catch(e){
+   const toasts=await page.locator('.toast').allTextContents();
+   const loginVisible=await page.locator('form[data-form=login]').count();
+   const headingCount=await page.locator('h2').count();
+   console.log('QA_AGENDA_LOGIN_DIAG',JSON.stringify({loginVisible,headingCount,toasts:toasts.map(t=>t.slice(0,120))}));
+   throw e;
+ }
+ await menu.click();
  await expect(page.locator('h2').filter({hasText:'Minha Escala'})).toBeVisible({timeout:30000});
  await expect(page.locator('.agenda-next-card')).toContainText('Maternal',{timeout:30000});
  const start=new Date(volunteer.day+'T12:00:00');
