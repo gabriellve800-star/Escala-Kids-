@@ -175,10 +175,19 @@ Deno.serve(async (req) => {
             p_telefone: telefone, p_codigo: codigo,
           });
         } catch (e) {
-          console.warn('escala_register_database_error',{message:untrustedError(e).slice(0,120)});
-          // Reverter Auth se o código expirar, acabar ou os dados forem recusados.
-          await admin.auth.admin.deleteUser(created.user.id);
+          // Erros SQL livres podem conter dados pessoais; só registrar categoria segura.
           const info=untrustedError(e);
+          const motivo=info.includes('perfis_usuario_key')?'USUARIO_DUPLICADO':
+            info.includes('CONVITE_INVALIDO')?'CONVITE_INVALIDO':'ERRO_RPC';
+          console.warn('escala_register_database_error',{stage:'finalizar_cadastro',code:motivo});
+          // Reverter Auth E CONFERIR o resultado; evitar ocultar conta órfã.
+          const { error: rollbackError } = await admin.auth.admin.deleteUser(created.user.id);
+          if (rollbackError) {
+            console.error('escala_register_rollback_failed',{
+              stage:'rollback',code:rollbackError.code||'ERRO_AUTH',status:rollbackError.status||0,
+            });
+            return err('Falha de finalização. Contate o administrador antes de repetir o cadastro.',500);
+          }
           if (info.includes('perfis_usuario_key') || info.includes('usuario')) return err('Esse nome de usuário já está cadastrado. Escolha outro.',409);
           if (info.includes('CONVITE_INVALIDO')) return err('Convite vencido ou já utilizado. Solicite outro código.',409);
           return err('Não foi possível concluir o cadastro. Tente outra vez ou solicite um novo convite.',409);
