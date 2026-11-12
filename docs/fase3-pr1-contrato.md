@@ -1,8 +1,8 @@
-# Escala Kids · Fase 3 · PR 1 — base segura (revisão do proprietário)
+# Escala Kids · Fase 3 · PR 1 — base segura (implantação aprovada)
 
-**Status:** candidato à revisão; não mesclar na main, não aplicar em produção.
-**Ambiente de execução autorizado:** Supabase **Teste escala**, `eofoeijyfpptcktiqeah`.
-**Produção proibida:** Supabase **Escala Kids**, `pntzfuxwkjreugxzovjj`.
+**Status:** aprovado pelo proprietário em 12/11/2026; migrations já aplicadas em produção; integração do PR pendente do merge final.
+**Homologação inicial:** Supabase **Teste escala**, `eofoeijyfpptcktiqeah`.
+**Produção autorizada para este PR:** Supabase **Escala Kids**, `pntzfuxwkjreugxzovjj`. Sem liberação de funcionalidades dos PRs 2 e 3.
 **Base de código:** v1.2.5, sem modificações em HTML/JS/CSS, login, convites ou Edge Function.
 
 ## Decisões já incorporadas
@@ -60,7 +60,7 @@
 - Envio/visto/tempo real, Web Push, anti-spam, janela de desfazer e auditoria clínica: **PR 3**. Não há endpoint novo em produção.
 - **Decisões 8 e 9**: escalonamento/telão e retirada segura continuam pendentes de confirmação específica. A presença (item 4) tem somente estrutura, sem ativação.
 - Testes positivos com professor escalado no culto real e no celular, incluindo PWA/iOS/Push, ainda precisam de homologação. Nada foi cadastrado no app real.
-- Não executar migração na produção antes de nova aprovação e revisão do plano de rollback. A futura aplicação deve seguir a ordem cronológica das migrations e incluir backup, RLS negativo e verificação de login/agenda.
+- As quatro migrations deste PR foram aplicadas na produção após aprovação em 12/11/2026. Não repetir essas versões. Migrações futuras continuam exigindo PR, testes e aprovação.
 
 ## Arquivos da PR 1
 
@@ -78,7 +78,7 @@
 
 As quatro migrações foram executadas no projeto `Teste escala` via ferramenta de SQL, em transações explícitas, para validar e ajustar RLS antes do PR. **Isso não registra versões em `supabase_migrations.schema_migrations`**: consulta de leitura retornou **0/4 versões**. O schema de homologação está alterado e funcional, mas `supabase db push` direto nesse mesmo projeto pode tentar recriar objetos já existentes.
 
-Antes de qualquer automação de banco nesse ambiente, reconciliar versões pelo mecanismo oficial de migration repair (após revisar os nomes/arquivos), ou reconstituir o ambiente de teste com um pipeline limpo. **Não editar a tabela de histórico manualmente e não repetir o SQL diretamente.** A produção não recebeu nenhuma migração.
+Antes de qualquer automação de banco nesse ambiente, reconciliar versões pelo mecanismo oficial de migration repair (após revisar os nomes/arquivos), ou reconstituir o ambiente de teste com um pipeline limpo. **Não editar a tabela de histórico manualmente e não repetir o SQL diretamente.** A produção recebeu as quatro migrations registradas, após aprovação do proprietário.
 
 ## Situação após aprovação de implantação
 
