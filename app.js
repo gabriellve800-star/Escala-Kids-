@@ -515,6 +515,7 @@ async function loadData({silent=false}={}) {
 }
 async function loadKids({silent=false}={}) {
   if(!sb||!state.user||(!canWork()&&state.family?.status!=='ativo'))return false;
+  const loadingUser=state.user.id;
   const team=canWork();
   const tasks=[
     sb.from('turmas_kids').select('id,posicao,nome,idade_min_meses,idade_max_meses,ativa').order('posicao'),
@@ -530,6 +531,8 @@ async function loadKids({silent=false}={}) {
       .order('criado_em',{ascending:false}).limit(50));
   }
   const out=await Promise.all(tasks);
+  // Resposta atrasada de outra conta jamais repovoa dados privados na sessão nova.
+  if(state.user?.id!==loadingUser)return false;
   if(out.some(x=>x.error)){
     state.kidsError=true;
     if(!silent)notify('Não foi possível carregar o Kids. A agenda continua disponível.',true);
