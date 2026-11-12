@@ -3,7 +3,9 @@
 // Funções de escala, check-in e crianças serão conectadas nas próximas fases.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle';
 import { config } from './config.js';
-import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.4';
+import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.5';
+import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
+import { syncNavigation } from './navigation.js?v=1.2.5';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -105,6 +107,7 @@ const state = {
   tab:'inicio', drafts:{}, modal:null, busy:false, toast:'', error:'',
   currentInvitation:null, pendingCount:0, demoTheme:'',
   schedules:[], availability:[], agendaError:false, selectedAvailabilityDate:'',
+  availabilityDraft:null, availabilitySaving:false, availabilitySuccess:false, loadingTab:false,
 };
 let sb;
 let toastTimer;
@@ -136,7 +139,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.4</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.5</small>');
   }
   $('#seg').innerHTML=state.user && canWork()
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -149,9 +152,7 @@ function tabs() {
   return [['escala','Minha Escala','cal'],['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
-  $('#nav').innerHTML=tabs().map(([id,name,icon]) =>
-    `<button class="${state.tab===id?'on':''}" data-a="tab" data-tab="${id}" aria-current="${state.tab===id?'page':'false'}">${ico(icon)}${name}</button>`).join('');
-  $('#nav').style.display=tabs().length?'flex':'none';
+  syncNavigation($('#nav'),tabs(),state.tab,ico,esc);
 }
 function authUI() {
   if (!isReady()) return `<h2>Configurar Escala Kids</h2><p class="mut">O aplicativo está preparado, mas ainda não está ligado ao banco de dados. Preencha o arquivo config.js e configure o Supabase conforme o manual da Fase 1.</p>`;
@@ -322,6 +323,9 @@ function teamUI() {
   return h;
 }
 function activeUI() {
+  if(state.loadingTab)return '<div class="screen-loading" aria-busy="true" aria-label="Carregando">'+
+    '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-card"></div>'+
+    '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>';
   switch(state.tab) {
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
@@ -332,7 +336,7 @@ function activeUI() {
     case 'escala':return state.agendaError?
       '<h2>Minha Escala</h2><div class="alert">Não foi possível carregar as escalas. Suas outras funções continuam disponíveis.</div><button class="btn ghost" data-a="agenda-refresh">Tentar novamente</button>':
       isLeader()?leaderAgendaUI({rows:state.schedules,availability:state.availability,people:state.people,labels:FN,esc}):
-      volunteerAgendaUI({rows:state.schedules.filter(x=>x.pessoa_id===state.user?.id),availability:state.availability,selectedDate:state.selectedAvailabilityDate,labels:FN,esc});
+      volunteerAgendaUI({rows:state.schedules.filter(x=>x.pessoa_id===state.user?.id),availability:state.availability.filter(x=>x.pessoa_id===state.user?.id),draftSelection:state.availabilityDraft,selectedDate:state.selectedAvailabilityDate,labels:FN,esc});
     default:return homeUI();
   }
 }
@@ -345,9 +349,97 @@ function renderModal() {
     <button class="btn pri" data-a="confirm">Confirmar</button><div style="height:8px"></div><button class="btn ghost" data-a="cancel">Cancelar</button></div>`;
   $('#app').appendChild(d);
 }
+
+function availabilityBase() { return ownAvailability(state.availability,state.user?.id); }
+function availabilityDirty() {
+  return !!state.availabilityDraft && !selectionEqual(availabilityBase(),state.availabilityDraft);
+}
+// Elemento fixo no shell, entre o conteúdo rolável e a navegação.
+function renderAvailabilityBar() {
+  let bar=$('#agenda-draft-bar');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='agenda-draft-bar';bar.className='agenda-draftbar';
+    $('#app').insertBefore(bar,$('#nav'));
+  }
+  const show=state.user && canWork() && !isLeader() && state.tab==='escala' &&
+    (availabilityDirty() || state.availabilitySuccess);
+  bar.hidden=!show;
+  if(!show){bar.replaceChildren();return;}
+  if(state.availabilitySuccess){
+    bar.className='agenda-draftbar agenda-draftbar-success';
+    bar.innerHTML='<span role="status">Disponibilidade enviada.</span>';return;
+  }
+  bar.className='agenda-draftbar';
+  const total=state.availabilityDraft.size;
+  const periodText=total===1?'1 período selecionado':total+' períodos selecionados';
+  bar.innerHTML='<div class="agenda-draftbar-title" aria-live="polite"><strong>'+periodText+
+    '</strong><small>Alterações ainda não enviadas</small></div>'+
+    '<div class="agenda-draftbar-buttons"><button class="btn ghost" type="button" data-a="agenda-cancel" '+
+    (state.availabilitySaving?'disabled':'')+'>Cancelar</button>'+
+    '<button class="btn pri" type="button" data-a="agenda-save" '+
+    (state.availabilitySaving?'disabled aria-busy="true"':'')+'>'+
+    (state.availabilitySaving?'Enviando…':'Enviar')+'</button></div>';
+}
+// Atualiza apenas botões/indicadores envolvidos, preservando scroll e foco.
+function paintDraftSelection(){
+  if(!state.user || state.tab!=='escala' || isLeader())return;
+  const saved=availabilityBase(),selected=state.availabilityDraft||saved;
+  $('#main').querySelectorAll('.agenda-slot[data-a="agenda-toggle"]').forEach(btn=>{
+    const chosen=selected.has(btn.dataset.day+'|'+btn.dataset.culto);
+    const sent=saved.has(btn.dataset.day+'|'+btn.dataset.culto);
+    const pending=chosen!==sent;
+    btn.classList.toggle('on',chosen);
+    btn.classList.toggle('sent',sent&&!pending);
+    btn.classList.toggle('pending',chosen&&pending);
+    btn.classList.toggle('pending-remove',!chosen&&pending);
+    btn.setAttribute('aria-pressed',String(chosen));
+    const suffix=pending?(chosen?' · Selecionado':' · Retirar'):(chosen?' · Enviado':'');
+    const name=btn.dataset.culto==='domingo_manha'?'Manhã':
+      btn.dataset.culto==='domingo_noite'?'Noite':'Noite · Quarta-feira';
+    btn.setAttribute('aria-label',name+suffix);
+    const label=btn.querySelector('.agenda-slot-status');if(label)label.textContent=suffix;
+  });
+  $('#main').querySelectorAll('.agenda-date-button[data-a="agenda-day"]').forEach(btn=>{
+    const day=btn.dataset.day, opts=validSlot(day,'domingo_manha')
+      ? ['domingo_manha','domingo_noite']:['quarta_noite'];
+    const chosen=opts.some(c=>selected.has(day+'|'+c));
+    const modified=opts.some(c=>selected.has(day+'|'+c)!==saved.has(day+'|'+c));
+    const removing=opts.some(c=>saved.has(day+'|'+c)&&!selected.has(day+'|'+c));
+    btn.classList.toggle('agenda-available',chosen);
+    btn.classList.toggle('agenda-date-draft',modified);
+    btn.classList.toggle('agenda-date-removal',removing);
+    let dot=btn.querySelector('i');
+    if(chosen&&!dot){dot=document.createElement('i');dot.setAttribute('aria-hidden','true');btn.append(dot);}
+    if(!chosen&&dot)dot.remove();
+    btn.setAttribute('aria-label',day+', '+opts.filter(c=>selected.has(day+'|'+c)).length+' períodos selecionados');
+  });
+  const count=$('[data-agenda-count]');
+  if(count)count.textContent=selected.size+(selected.size===1?' período selecionado':' períodos selecionados')+' para o próximo mês.';
+  renderAvailabilityBar();
+}
+
+function reducedMotion() {
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+function renderScreenTransition() {
+  const paint=()=>render();
+  if(!reducedMotion() && typeof document.startViewTransition==='function'){
+    document.startViewTransition(paint);
+  }else{
+    paint();
+    const main=$('#main');
+    if(!reducedMotion()){
+      main.classList.remove('screen-enter');
+      void main.offsetWidth;
+      main.classList.add('screen-enter');
+    }
+  }
+}
 function render() {
   renderHeader(); renderNav();
   $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
+  renderAvailabilityBar();
   renderToast();renderModal();
   paintInviteQR();
 }
@@ -359,7 +451,7 @@ async function readProfile() {
   if(pe || !p){state.profile=null;await sb.auth.signOut({scope:'local'});state.user=null;notify('Conta sem perfil. Fale com o administrador.',true);return;}
   state.profile=p;
 }
-async function loadData() {
+async function loadData({silent=false}={}) {
   if (!sb || !canWork()) {render();return;}
   const jobs=[];
   if(isLeader()) jobs.push(sb.from('perfis').select('*').order('nome'));
@@ -368,7 +460,7 @@ async function loadData() {
   if(canApprove())jobs.push(sb.from('convites').select('id,criado_por,expira_em,usos,usos_max,revogado,criado_em').order('criado_em',{ascending:false}).limit(50));
   if(isAdmin())jobs.push(sb.from('auditoria').select('id,quem,acao,alvo,quando').order('quando',{ascending:false}).limit(100));
   const res=await Promise.all(jobs);
-  if(res.some(r=>r.error)) {notify('Não foi possível carregar todas as informações.',true);render();return;}
+  if(res.some(r=>r.error)) {notify('Não foi possível carregar todas as informações.',true);if(!silent)render();return false;}
   let idx=0;state.people=res[idx++].data||[];state.functions=res[idx++].data||[];
   state.invites=canApprove()?res[idx++].data||[]:[];
   state.pendingCount=canApprove()?state.people.filter(p=>p.status==='pendente').length:0;
@@ -384,7 +476,8 @@ async function loadData() {
   const target=firstMonth(1);
   if(!state.selectedAvailabilityDate || state.selectedAvailabilityDate<target || state.selectedAvailabilityDate>=firstMonth(2))
     state.selectedAvailabilityDate=monthDays(target).find(d=>validSlot(d,'domingo_manha'))||monthDays(target).find(d=>validSlot(d,'quarta_noite'))||target;
-  state.drafts={};render();
+  state.drafts={};if(!silent)render();
+  return true;
 }
 async function boot() {
   if(!isReady()) {render();return;}
@@ -539,6 +632,13 @@ async function confirmAction() {
       await gateway('manage',{id:p.id,...d});notify('Permissões atualizadas.');
     } else if(m.action==='revoke') {
       await gateway('revoke_invite',{id:m.id});notify('Convite revogado.');
+    } else if(m.action==='discard-draft-tab') {
+      state.availabilityDraft=null;state.availabilitySuccess=false;
+      state.tab=m.id;
+    } else if(m.action==='discard-draft-out') {
+      state.availabilityDraft=null;state.availabilitySuccess=false;
+      await sb.auth.signOut({scope:'global'});
+      state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();
     } else if(m.action==='delete-schedule') {
       if(!isLeader())throw new Error('Somente a liderança pode retirar escalas.');
       const {error}=await sb.from('escalas').delete().eq('id',m.id);
@@ -564,18 +664,38 @@ async function actionClick(b) {
     state.selectedAvailabilityDate=b.dataset.day;render();return;
   }
   if(a==='agenda-toggle'){
-    if(!canWork()||state.busy||!validSlot(b.dataset.day,b.dataset.culto))return;
-    if(b.dataset.day<firstMonth(1)||b.dataset.day>=firstMonth(2)){notify('A disponibilidade só pode ser informada para o próximo mês.',true);return;}
-    const payload={pessoa_id:state.user.id,dia:b.dataset.day,culto:b.dataset.culto};
-    const has=state.availability.some(x=>x.pessoa_id===payload.pessoa_id&&x.dia===payload.dia&&x.culto===payload.culto);
-    state.busy=true;b.disabled=true;
-    try{
-      const result=has?await sb.from('disponibilidades').delete().match(payload):
-        await sb.from('disponibilidades').insert(payload);
-      if(result.error)throw new Error('Não foi possível salvar a disponibilidade.');
-      await loadData();
-      notify(has?'Disponibilidade retirada.':'Disponibilidade registrada!');
-    }catch(e){notify(showError(e),true);}finally{state.busy=false;b.disabled=false;}
+    if(!canWork()||isLeader()||state.busy||state.availabilitySaving||!validSlot(b.dataset.day,b.dataset.culto))return;
+    if(b.dataset.day<firstMonth(1)||b.dataset.day>=firstMonth(2)){
+      notify('Só é possível escolher períodos do próximo mês.',true);return;
+    }
+    state.availabilitySuccess=false;
+    state.availabilityDraft=toggleSelection(availabilityBase(),state.availabilityDraft,
+      b.dataset.day+'|'+b.dataset.culto);
+    paintDraftSelection();
+    return;
+  }
+  if(a==='agenda-cancel'){
+    if(state.availabilitySaving)return;
+    state.availabilityDraft=null;state.availabilitySuccess=false;
+    paintDraftSelection();return;
+  }
+  if(a==='agenda-save'){
+    if(state.availabilitySaving||!availabilityDirty()||!canWork()||isLeader())return;
+    state.availabilitySaving=true;renderAvailabilityBar();
+    const result=await saveAvailability({
+      sb,userId:state.user.id,base:availabilityBase(),draft:state.availabilityDraft,
+      validEntry:({dia,culto})=>dia>=firstMonth(1)&&dia<firstMonth(2)&&validSlot(dia,culto),
+    });
+    // Recarrega sempre, também após tentativa de rollback; mantém rascunho em erro.
+    if(result.ok)state.availabilityDraft=null;
+    await loadData();
+    state.availabilitySaving=false;
+    if(result.ok){
+      state.availabilitySuccess=true;renderAvailabilityBar();
+      setTimeout(()=>{state.availabilitySuccess=false;renderAvailabilityBar();},1800);
+    }else{
+      renderAvailabilityBar();notify(result.message,true);
+    }
     return;
   }
   if(a==='agenda-remove'){
@@ -585,10 +705,24 @@ async function actionClick(b) {
     return;
   }
   if(a==='tab'){
-    state.tab=b.dataset.tab;state.currentInvitation=null;
-    if ((state.tab === 'aprov' && canApprove()) || state.tab==='escala') await loadData();
-    else render();
-    $('#main').scrollTop=0;return;
+    if(state.availabilitySaving){notify('Conclua o envio antes de sair.',true);return;}
+    if(state.tab==='escala' && b.dataset.tab!=='escala' && availabilityDirty()){
+      modal('Rascunho não enviado','Sair e descartar estas alterações?','discard-draft-tab',b.dataset.tab);return;
+    }
+    const target=b.dataset.tab;
+    if(target===state.tab)return;
+    state.tab=target;state.currentInvitation=null;
+    const refresh=(target==='aprov' && canApprove()) || target==='escala';
+    state.loadingTab=refresh;
+    renderScreenTransition();
+    $('#main').scrollTop=0;
+    if(refresh){
+      await loadData({silent:true});
+      state.loadingTab=false;
+      renderScreenTransition();
+    }
+    try {navigator.vibrate?.(8);}catch{/* sem suporte */}
+    return;
   }
   if(a==='login'){state.auth='login';render();return;}
   if(a==='signup'){state.auth='signup';state.inviteVerified=false;render();return;}
@@ -596,6 +730,10 @@ async function actionClick(b) {
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
   if(a==='out'){
+    if(state.availabilitySaving){notify('Conclua o envio antes de sair.',true);return;}
+    if(availabilityDirty()){
+      modal('Rascunho não enviado','Sair da conta e descartar estas alterações?','discard-draft-out');return;
+    }
     await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;forgetHumanActivity();
     state.auth='login';state.drafts={};state.people=[];render();return;
   }
@@ -639,6 +777,14 @@ async function actionClick(b) {
   if(a==='saveperson') {modal('Salvar alterações',`Confirmar as novas permissões de ${p.nome}?`,'manage',p.id);return;}
   if(a==='revoke') {modal('Revogar convite','Este link não poderá mais ser utilizado.','revoke',id);return;}
 }
+// Toque com resposta curta; o próprio nó de navegação não é recriado na troca.
+$('#app').addEventListener('pointerdown',e=>{
+  const btn=e.target.closest('#nav button[data-a="tab"]');
+  if(btn)btn.classList.add('pressing');
+},{passive:true});
+['pointerup','pointercancel'].forEach(type=>$('#app').addEventListener(type,()=>{
+  setTimeout(()=>$('#nav').querySelectorAll('.pressing').forEach(x=>x.classList.remove('pressing')),90);
+},{passive:true}));
 $('#app').addEventListener('submit', async e=>{const form=e.target.closest('form[data-form]');if(!form)return;e.preventDefault();await handleForm(form);});
 $('#app').addEventListener('click', async e=>{const b=e.target.closest('button[data-a]');if(!b||b.disabled)return;await actionClick(b);});
 
@@ -661,6 +807,9 @@ const captureActivity = () => {
   markHumanActivity();
 };
 window.addEventListener('pointerdown',captureActivity,{passive:true});
+window.addEventListener('beforeunload', event=>{
+  if(availabilityDirty()){event.preventDefault();event.returnValue='';}
+});
 window.addEventListener('keydown',captureActivity);
 window.addEventListener('focus',() => {
   if (!state.user) return;

@@ -1,0 +1,58 @@
+name: Escala Kids — QA PR v1.2.5
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax-check JS modules
+        run: |
+          node --check app.js
+          node --check agenda.js
+          node --check availability-draft.js
+          node --check navigation.js
+      - name: Existing tests + new regression suite (offline)
+        run: npm test
+  lighthouse-login:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Local baseline + feature, no production mutation
+        run: |
+          git fetch origin main
+          git worktree add --detach /tmp/escala-kids-base origin/main
+          python3 -m http.server 4173 --directory /tmp/escala-kids-base >/tmp/kids-baseline.log 2>&1 &
+          echo $! >/tmp/kids-baseline.pid
+          python3 -m http.server 4174 --directory . >/tmp/kids-feature.log 2>&1 &
+          echo $! >/tmp/kids-feature.pid
+          for x in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4173/index.html >/dev/null && curl -sf http://127.0.0.1:4174/index.html >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Lighthouse mobile before and after (public login only)
+        run: |
+          mkdir -p artifacts
+          npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/ --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" --output=json --output-path=artifacts/lighthouse-main.json --quiet
+          npx --yes lighthouse@12.8.2 http://127.0.0.1:4174/ --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" --output=json --output-path=artifacts/lighthouse-v125.json --quiet
+          node scripts/lighthouse-summary.cjs
+      - name: Store reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: escala-kids-lighthouse-local-mobile
+          path: artifacts/
+          if-no-files-found: ignore
