@@ -122,7 +122,7 @@ const isAdmin = () => state.profile?.perfil === 'administrador';
 const canApprove = () => isAdmin() || (state.profile?.perfil === 'lider' && state.profile?.pode_aprovar);
 const isLeader = () => isAdmin() || state.profile?.perfil === 'lider';
 const canWork = () => state.profile?.status === 'ativo' && !state.profile.primeiro_acesso;
-const first = () => state.profile?.nome?.split(' ')[0] || 'Olá';
+const first = () => (state.profile?.nome||state.family?.nome||'Olá').split(' ')[0];
 
 function field(id, label, type='text', extra='') {
   return `<div class="field"><label for="${id}">${esc(label)}</label><input class="in" id="${id}" name="${id}" type="${esc(type)}" ${extra}></div>`;
@@ -338,7 +338,7 @@ function activeUI() {
          families:state.kidsFamilies,term:state.kidsTerm,esc,
          canManageClasses:isAdmin()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
          canRegisterChild:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='cadastrar_criancas'),
-         inviteCode:state.kidsInviteCode});
+         canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode});
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
     case 'convites':return invitesUI();
@@ -857,7 +857,7 @@ async function actionClick(b) {
     state.kidsInviteCode='';render();return;}
   if(a==='kids-refresh'){await loadKids();return;}
   if(a==='kids-invite-family'){
-    if(!canWork()||!(isLeader()||isAdmin()))return;
+    if(!canWork()||!canApprove())return;
     const {data,error}=await sb.rpc('kids_emitir_convite_familia',{p_dias:7});
     if(error||!/^([0-9a-f]{64})$/.test(data||'')){
       notify('Não foi possível emitir o convite familiar.',true);return;
