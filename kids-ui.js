@@ -28,7 +28,7 @@ export function kidsPermissionChips(personId,current,esc){
        data-a="kid-perm" data-id="${safe(personId,esc)}" data-p="${key}"
        aria-pressed="${current.includes(key)}">${safe(label,esc)}</button>`).join('')}</div></div>`;
 }
-export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,canManageClasses=false,canRegisterChild=false,inviteCode=''}){
+export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,canManageClasses=false,canRegisterChild=false,canInviteFamily=false,inviteCode=''}){
  let out=`<div class="kids-heading"><button class="btn ghost kids-back" data-a="kids-back">Voltar</button>
   <h2>Kids</h2><p class="mut">Turmas, cadastros e segurança dos pequenos.</p></div>`;
  if(!classes.length) out+=`<div class="card"><h3>Configure as turmas</h3><p class="mut">Os nomes e as idades são definidos pela liderança. Nenhuma turma fictícia será publicada.</p></div>`;
@@ -50,7 +50,7 @@ export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,
   }
  } else out+=classes.map(t=>`<div class="card"><strong>${safe(t.nome,esc)}</strong><p class="mut">${t.idade_min_meses} a ${t.idade_max_meses} meses</p></div>`).join('');
  out+=termsCard(term,esc);
- if(isAdmin||isLeader) {
+ if(canInviteFamily) {
    out+=`<h3 class="kids-section">Convite de família</h3><div class="card">
      <p class="mut">Convites próprios dos responsáveis, diferentes dos convites da equipe. Compartilhe o código somente com a família autorizada.</p>
      <button class="btn pri" type="button" data-a="kids-invite-family">Gerar convite familiar</button>
