@@ -98,3 +98,16 @@ test('PR2: cache PWA 1.2.6 e scripts atualizados de forma coerente',()=>{
  assert.match(app,/kids-ui\.js\?v=1\.2\.6/);
  assert.match(app,/agenda\.js\?v=1\.2\.6/);
 });
+
+test('PR2: trocar de conta limpa dados infantis e descarta consultas atrasadas',()=>{
+ assert.match(app,/function clearPrivateKidsState\(\)/);
+ assert.match(app,/state\.kidsChildren=\[\];state\.kidsLinks=\[\]/);
+ assert.match(app,/state\.user\?\.id!==loadingUser/);
+ assert.match(app,/state\.user\.id!==u\.user\.id/);
+});
+test('PR2: familias pendentes podem exercer direitos LGPD',()=>{
+ const migration=read('supabase/migrations/20261112213000_fase3_pr2_solicitacoes_lgpd.sql');
+ assert.match(migration,/pendente','ativo','desativado/);
+ assert.match(migration,/public\.solicitacoes_privacidade_kids/);
+ assert.match(ui,/family-privacy-request/);
+});
