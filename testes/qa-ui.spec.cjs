@@ -112,10 +112,25 @@ function ui(){return state.ui[platform()];}
 test('Minha Escala: voluntário vê próxima turma e salva disponibilidade do mês seguinte',async({page})=>{
  const volunteer=state.agendaVolunteer;
  expect(volunteer?.usuario).toBeTruthy();
+ const authStatuses=[],pageFailures=[];
+ page.on('response',response=>{
+   if(/\/auth\/v1\/(token|user)(?:\?|$)|\/rest\/v1\/perfis/.test(response.url()))
+     authStatuses.push({endpoint:response.url().includes('/token')?'token':response.url().includes('/user')?'user':'perfis',status:response.status()});
+ });
+ page.on('pageerror',error=>pageFailures.push(String(error?.message||'javascript_error').slice(0,160)));
+
  await page.goto(root);
  await page.locator('form[data-form=login] [name=lu]').fill(volunteer.email);
  await page.locator('form[data-form=login] [name=lp]').fill(volunteer.senha);
  await page.locator('form[data-form=login] button[type=submit]').click();
+ await page.waitForTimeout(1800);
+ console.log('QA_AGENDA_LOGIN_EARLY',JSON.stringify({
+   loginVisible:await page.locator('form[data-form=login]').count(),
+   navText:(await page.locator('#nav').allTextContents()).map(x=>x.slice(0,160)),
+   text:(await page.locator('#main').innerText()).slice(0,220),
+   toasts:(await page.locator('.toast').allTextContents()).map(x=>x.slice(0,110)),
+   authStatuses,pageFailures
+ }));
  const menu=page.locator('nav button[data-a=tab][data-tab=escala]');
  try {
    await expect(menu).toBeVisible({timeout:25000});
