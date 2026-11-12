@@ -33,8 +33,8 @@ async function users(){
 }
 async function counts(){
  const o={auth:(await users()).length};
- for(const t of ['perfis','convites','auditoria','funcoes_pessoa']){
-  const col=t==='funcoes_pessoa'?'pessoa_id':'id';
+ for(const t of ['perfis','convites','auditoria','funcoes_pessoa','escalas','disponibilidades']){
+  const col=['funcoes_pessoa','disponibilidades','escalas'].includes(t)?'pessoa_id':'id';
   const {count,error}=await admin.from(t).select(col,{count:'exact',head:true});
   check(error,'count '+t);o[t]=count;
  }
@@ -48,7 +48,7 @@ async function call(action,payload={},jwt){
  return {status:result.status,body};
 }
 async function verifyStatic(){
- const items=['index.html','app.js','sw.js','config.js'];
+ const items=['index.html','app.js','agenda.js','styles.css','sw.js','config.js'];
  for(const item of items){
   const b=await fetch(site+item+'?smoke='+encodeURIComponent(prefix),{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(15000)});
   assert.equal(b.status,200,'public HTTP '+item+' '+b.status);
@@ -61,10 +61,10 @@ async function verifyStatic(){
    const text=remote.toString('utf8');
    assert(text.includes(ref+'.supabase.co')&&!text.includes('sb_secret_')&&!text.includes('eofoeijyfpptcktiqeah'));
   }
-  if(item==='index.html')assert(remote.toString('utf8').includes('Escala Kids · v1.2.3'));
-  if(item==='sw.js')assert(remote.toString('utf8').includes("escala-kids-v1.2.3-qa-invite-fix"));
+  if(item==='index.html')assert(remote.toString('utf8').includes('Escala Kids · v1.2.4'));
+  if(item==='sw.js')assert(remote.toString('utf8').includes("escala-kids-v1.2.4-agenda-voluntarios"));
  }
- console.log('PROD_SMOKE_SITE_HASH_OK: v1.2.3 index/app/sw; config prod public; HTTP 200');
+ console.log('PROD_SMOKE_SITE_HASH_OK: v1.2.4 index/app/sw; config prod public; HTTP 200');
 }
 async function play(browserType,device,persona,invite,kind){
  const browser=await browserType.launch({headless:true});
@@ -137,12 +137,29 @@ async function verifyServiceWorker(){
      });
     });
     const names=await caches.keys();
-    return {oldPresent:names.includes(cacheName),v123:names.some(x=>x.startsWith('escala-kids-v1.2.3'))};
+    return {oldPresent:names.includes(cacheName),v123:names.some(x=>x.startsWith('escala-kids-v1.2.4'))};
   });
   assert.equal(result.oldPresent,false,'cache antigo continua presente');
-  assert.equal(result.v123,true,'cache v1.2.3 ausente');
+  assert.equal(result.v123,true,'cache v1.2.4 ausente');
   console.log('PROD_SMOKE_SW_OK: nova versão ativa e cache antigo eliminado');
  }finally{await context.close();await browser.close()}
+}
+async function volunteerAgendaSmoke(persona,day){
+ const browser=await chromium.launch({headless:true});
+ const context=await browser.newContext({...devices['Pixel 7'],serviceWorkers:'allow'});
+ const page=await context.newPage();
+ try{
+  await page.goto(site,{waitUntil:'domcontentloaded'});
+  await page.locator('form[data-form=login] [name=lu]').fill(persona.email);
+  await page.locator('form[data-form=login] [name=lp]').fill(persona.senha);
+  await page.locator('form[data-form=login] button[type=submit]').click();
+  await expect(page.locator('h2').filter({hasText:'Minha Escala'})).toBeVisible({timeout:30000});
+  await expect(page.locator('.agenda-next-card')).toContainText('Maternal');
+  await page.locator('button[data-a=agenda-day][data-day="'+day+'"]').click();
+  await page.locator('button[data-a=agenda-toggle][data-culto=domingo_manha]').click();
+  await expect(page.locator('button[data-a=agenda-toggle][data-culto=domingo_manha]')).toHaveAttribute('aria-pressed','true',{timeout:30000});
+  return true;
+ }finally{await context.close();await browser.close();}
 }
 async function execution(){
  const pre=await counts();
@@ -182,6 +199,24 @@ async function execution(){
  const p=await call('review',{id:id1,aprovar:true,perfil:'voluntario',funcoes:['professor'],pode_aprovar:false},jwt);
  assert.equal(p.status,200,'aprovação HTTP '+p.status);
  await verifyRls(approved,'ativo');
+ // O card só anuncia uma escala que foi realmente publicada pelo administrador.
+ const now=new Date();
+ const futureMonth=new Date(now.getFullYear(),now.getMonth()+1,1,12);
+ let sunday=null;
+ for(let n=1;n<=31;n++){
+  const d=new Date(futureMonth.getFullYear(),futureMonth.getMonth(),n,12);
+  if(d.getMonth()!==futureMonth.getMonth())break;
+  if(d.getDay()===0){sunday=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(n).padStart(2,'0')].join('-');break;}
+ }
+ assert(sunday,'domingo de teste indisponível');
+ const assigned=await cl.from('escalas').insert({pessoa_id:id1,dia:sunday,culto:'domingo_manha',horario:'09:00',turma:'Maternal',funcao:'professor'});
+ check(assigned.error,'escala sintética por administrador');
+ await volunteerAgendaSmoke(approved,sunday);
+ const own=publicClient();
+ check((await own.auth.signInWithPassword({email:approved.email,password:approved.senha})).error,'login para disponibilidade');
+ const av=await own.from('disponibilidades').select('dia,culto').eq('dia',sunday).eq('culto','domingo_manha');
+ check(av.error,'ler disponibilidade real');assert.equal(av.data.length,1);
+ console.log('PROD_SMOKE_AGENDA_OK: card próxima escala, login voluntário, calendário e disponibilidade salvos no site público');
  const logged=await call('login',{usuario:approved.usuario,senha:approved.senha});
  assert.equal(logged.status,200,'login aprovado HTTP '+logged.status);
  assert(logged.body.access_token&&logged.body.refresh_token);
@@ -217,6 +252,8 @@ async function cleanup(){
   check((await admin.from('auditoria').delete().in('quem',ids)).error,'delete audit actor');
   check((await admin.from('auditoria').delete().in('alvo',ids)).error,'delete audit target');
   check((await admin.from('funcoes_pessoa').delete().in('pessoa_id',ids)).error,'delete user functions');
+  check((await admin.from('escalas').delete().in('pessoa_id',ids)).error,'delete ONLY test schedules');
+  check((await admin.from('disponibilidades').delete().in('pessoa_id',ids)).error,'delete ONLY test availability');
  }
  if(inviteIds.length)check((await admin.from('convites').delete().in('id',inviteIds)).error,'delete ONLY invitation ids');
  if(ids.length)check((await admin.from('perfis').delete().in('id',ids)).error,'delete ONLY profile ids');
@@ -224,8 +261,8 @@ async function cleanup(){
  assert.equal((await users()).filter(u=>expected.has(u.email)).length,0,'Auth de identidades criadas residual');
  const unknown=(await users()).filter(u=>u.email?.startsWith(s.prefix+'_')&&!expected.has(u.email));
  assert.equal(unknown.length,0,'Encontradas identidades não previstas; NÃO excluí-las automaticamente');
- for(const t of ['perfis','convites','auditoria','funcoes_pessoa']){
-  const col=t==='funcoes_pessoa'?'pessoa_id':'id';
+ for(const t of ['perfis','convites','auditoria','funcoes_pessoa','escalas','disponibilidades']){
+  const col=['funcoes_pessoa','escalas','disponibilidades'].includes(t)?'pessoa_id':'id';
   if(!ids.length && !inviteIds.length)continue;
   if(t==='convites'){if(inviteIds.length){const x=await admin.from(t).select('id').in('id',inviteIds);check(x.error,'verify invites');assert.equal(x.data.length,0)}}
   else if(t==='auditoria'){

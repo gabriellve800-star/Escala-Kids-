@@ -6,6 +6,7 @@ const fn=read('supabase/functions/kids-auth/index.ts');
 const sec=read('supabase/functions/kids-auth/auth-errors.mjs');
 const html=read('index.html'),sw=read('sw.js'),app=read('app.js'),config=read('config.js');
 const smoke=read('testes/prod-smoke.cjs');
+const agenda=read('agenda.js'),agendaSql=read('supabase/migrations/20261111215000_agenda_voluntarios_v124.sql');
 const wf=read('.github/workflows/prod-public-smoke.yml');
 test('migration produção contém apenas limitador sobrecarregado e GRANT restrito',()=>{
  assert.match(sql,/create or replace function public\.limitar_cadastro\(p_chave text, p_max integer\)/i);
@@ -20,12 +21,12 @@ test('função Edge tem mapeamento de erro e logs sanitizados',()=>{
  assert.doesNotMatch(fn,/console\.(?:warn|log|error)\([^\n]*senha|console\.(?:warn|log|error)\([^\n]*email:/);
  assert.match(sec,/weak_password/);
 });
-test('site candidato v1.2.3 tem service worker e cache coerentes',()=>{
- assert.match(html,/<title>Escala Kids · v1\.2\.3<\/title>/);
- assert.match(html,/app\.js\?v=1\.2\.3/);
- assert.match(sw,/app\.js\?v=1\.2\.3/);
- assert.match(sw,/escala-kids-v1\.2\.3/);
- assert.match(app,/v1\.2\.3/);
+test('site candidato v1.2.4 tem service worker e cache coerentes',()=>{
+ assert.match(html,/<title>Escala Kids · v1\.2\.4<\/title>/);
+ assert.match(html,/app\.js\?v=1\.2\.4/);
+ assert.match(sw,/app\.js\?v=1\.2\.4/);
+ assert.match(sw,/escala-kids-v1\.2\.4/);
+ assert.match(app,/v1\.2\.4/);
  assert.match(config,/pntzfuxwkjreugxzovjj\.supabase\.co/);
  assert.doesNotMatch(config,/sb_secret_|eofoeijyfpptcktiqeah/i);
 });
@@ -44,4 +45,15 @@ test('workflows de produção não usam segredos de QA nem fazem limpeza de tabe
  assert.match(wf,/PROD_SUPABASE_SECRET_KEY/);
  assert.doesNotMatch(wf,/QA_SUPABASE_SECRET_KEY|QA_SUPABASE_ACCESS_TOKEN|qa_limpar_limites|db reset/i);
  assert.match(wf,/testes\/prod-smoke\.cjs cleanup/);
+});
+
+test('agenda v1.2.4: módulo e migração aditiva preservam cadastro e proteção RLS',()=>{
+ assert.match(agenda,/volunteerAgendaUI/);
+ assert.match(agenda,/leaderAgendaUI/);
+ assert.match(agenda,/domingo_manha/);
+ assert.match(agendaSql,/create table if not exists public\.disponibilidades/);
+ assert.match(agendaSql,/create table if not exists public\.escalas/);
+ assert.match(agendaSql,/private\.ativo\(\)/);
+ assert.match(agendaSql,/private\.lider_ativo\(\)/);
+ assert.doesNotMatch(agendaSql,/drop table|alter table public\.perfis|alter table public\.convites|delete from auth\.users/);
 });
