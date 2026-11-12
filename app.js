@@ -663,10 +663,18 @@ if(isReady()) {
     if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;state.auth='login';render();}
   });
 }
-render();
+// Não permitir preencher formulários antes do bootstrap da sessão terminar:
+// uma renderização posterior poderia apagar os campos ainda em edição.
+if (isReady()) {
+  renderHeader(); renderNav();
+  $('#main').innerHTML='<p class="loading">Verificando sessão…</p>';
+} else render();
 boot().then(() => {
   if (expiredOnStartup) notify('Sessão expirada por 14 dias sem atividade. Entre novamente.');
-}).catch(()=>notify('Não foi possível conectar. Confira sua internet ou a configuração.',true));
+}).catch(()=>{
+  render();
+  notify('Não foi possível conectar. Confira sua internet ou a configuração.',true);
+});
 // Somente uma interação humana e a abertura do app renovam os 14 dias.
 const captureActivity = () => {
   if (!state.user) return;
