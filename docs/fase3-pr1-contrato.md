@@ -64,10 +64,10 @@
 
 ## Arquivos da PR 1
 
-- `supabase/migrations/20261112170000_fase3_kids_base_rls.sql`
-- `supabase/migrations/20261112171000_fase3_fk_indices_private_deny.sql`
-- `supabase/migrations/20261112172000_fase3_separar_identidades.sql`
-- `supabase/migrations/20261112173000_fase3_auditoria_acessos_turma.sql`
+- `supabase/migrations/20261112182638_fase3_kids_base_rls.sql`
+- `supabase/migrations/20261112182641_fase3_fk_indices_private_deny.sql`
+- `supabase/migrations/20261112182648_fase3_separar_identidades.sql`
+- `supabase/migrations/20261112182651_fase3_auditoria_acessos_turma.sql`
 - `supabase/tests/fase3_kids_rls_rollback.sql`
 - `testes/fase3-seguranca.test.cjs`
 - `docs/fase3-pr1-contrato.md`
@@ -79,3 +79,11 @@
 As quatro migrações foram executadas no projeto `Teste escala` via ferramenta de SQL, em transações explícitas, para validar e ajustar RLS antes do PR. **Isso não registra versões em `supabase_migrations.schema_migrations`**: consulta de leitura retornou **0/4 versões**. O schema de homologação está alterado e funcional, mas `supabase db push` direto nesse mesmo projeto pode tentar recriar objetos já existentes.
 
 Antes de qualquer automação de banco nesse ambiente, reconciliar versões pelo mecanismo oficial de migration repair (após revisar os nomes/arquivos), ou reconstituir o ambiente de teste com um pipeline limpo. **Não editar a tabela de histórico manualmente e não repetir o SQL diretamente.** A produção não recebeu nenhuma migração.
+
+## Situação após aprovação de implantação
+
+Em 12/11/2026, as migrations foram aplicadas em **produção**, após autorização do proprietário. O Supabase atribuiu versões `20261112182638`, `20261112182641`, `20261112182648` e `20261112182651`. Os nomes dos arquivos foram sincronizados a essas versões, sem alterar lógica de negócio. As versões anteriores `20261112170000` a `20261112173000` pertenciam à preparação do PR e não devem ser aplicadas.
+
+A homologação já havia recebido o SQL diretamente e continua sem histórico correspondente. Portanto, antes de executar futuros `db push` no projeto **Teste escala**, reconciliar o histórico por procedimento oficial; não repetir migrações ali.
+
+A Fase 3 ainda não possui interface de cadastro infantil/familiar nem push; o frontend publicado permanece em v1.2.5.
