@@ -58,9 +58,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: v2.stable
       - name: Gerar e versionar package-lock (uma vez)
         shell: bash
         run: |
