@@ -94,7 +94,7 @@ async function enforceInactivity() {
   try { await sb.auth.signOut({ scope: 'local' }); }
   catch { /* tentar sair mesmo que a rede esteja indisponível */ }
   forgetHumanActivity();
-  state.user=null; state.profile=null; state.auth='login';
+  state.user=null; state.profile=null; clearPrivateKidsState(); state.auth='login';
   render(); notify('Sua sessão expirou após 14 dias sem abrir o aplicativo.', true);
   return true;
 }
@@ -462,9 +462,18 @@ function render() {
   renderToast();renderModal();
   paintInviteQR();
 }
+function clearPrivateKidsState() {
+  state.family=null;state.kidsChildren=[];state.kidsLinks=[];
+  state.kidsFamilies=[];state.kidsRequests=[];state.kidsPermissions=[];
+  state.kidsTerm=null;state.kidsClasses=[];state.kidsInviteCode='';state.kidsError=false;
+}
 async function readProfile() {
   const {data:u,error:e}=await sb.auth.getUser();
-  if(e || !u?.user){state.user=null;state.profile=null;state.family=null;return;}
+  if(e || !u?.user){state.user=null;state.profile=null;clearPrivateKidsState();return;}
+  if(state.user?.id && state.user.id!==u.user.id){
+    clearPrivateKidsState();state.profile=null;state.people=[];state.functions=[];state.invites=[];
+    state.schedules=[];state.availability=[];state.drafts={};
+  }
   state.user=u.user;
   const {data:p,error:pe}=await sb.from('perfis').select('*').eq('id',u.user.id).maybeSingle();
   if(pe) throw new Error('Não foi possível verificar o seu acesso.');
@@ -726,7 +735,7 @@ async function handleForm(form) {
       if(val('p1')!==val('p2')) throw new Error('As senhas precisam ser iguais.');
       await gateway('change_password',{senha:val('p1')});
       await sb.auth.signOut({scope:'global'});
-      state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();render();
+      state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';forgetHumanActivity();render();
       notify('Senha atualizada. Entre novamente com a nova senha.');
     } else if(id==='schedule') {
       if(!isLeader())throw new Error('Apenas a liderança pode publicar escalas.');
@@ -827,7 +836,7 @@ async function confirmAction() {
     } else if(m.action==='discard-draft-out') {
       state.availabilityDraft=null;state.availabilitySuccess=false;
       await sb.auth.signOut({scope:'global'});
-      state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();
+      state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';forgetHumanActivity();
     } else if(m.action==='delete-schedule') {
       if(!isLeader())throw new Error('Somente a liderança pode retirar escalas.');
       const {error}=await sb.from('escalas').delete().eq('id',m.id);
@@ -964,7 +973,7 @@ async function actionClick(b) {
     if(availabilityDirty()){
       modal('Rascunho não enviado','Sair da conta e descartar estas alterações?','discard-draft-out');return;
     }
-    await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;forgetHumanActivity();
+    await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;clearPrivateKidsState();forgetHumanActivity();
     state.auth='login';state.drafts={};state.people=[];render();return;
   }
   if(a==='reload'){await boot();if(canWork())notify('Seu acesso foi aprovado.');else notify('Seu cadastro ainda está em análise.');return;}
@@ -1023,7 +1032,7 @@ if(isReady()) {
     auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:AUTH_STORAGE_KEY},
   });
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;state.family=null;state.kidsInviteCode='';state.kidsChildren=[];state.kidsLinks=[];state.auth='login';render();}
+    if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';render();}
   });
 }
 render();
