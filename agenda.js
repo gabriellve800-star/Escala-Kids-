@@ -1,4 +1,4 @@
-// Escala Kids v1.2.4 — calendários reais, sem modificar autenticação ou convites.
+// Escala Kids v1.2.5 — calendários reais, sem modificar autenticação ou convites.
 export const CULTOS = Object.freeze({
   domingo_manha:'Domingo de manhã',
   domingo_noite:'Domingo à noite',
@@ -43,12 +43,13 @@ function grid(month,renderCell){
     Array.from({length:offset},()=>'<span aria-hidden="true"></span>').join('')+
     days.map(d=>renderCell(d)).join('')+'</div>';
 }
-export function volunteerAgendaUI({rows=[],availability=[],selectedDate,labels={},esc}){
+export function volunteerAgendaUI({rows=[],availability=[],draftSelection=null,selectedDate,labels={},esc}){
   const current=firstMonth();
   const next=firstMonth(1);
   const upcoming=nextShift(rows);
   const mine=sortedShifts(rows.filter(x=>x.dia>=current && x.dia<lastMonthExclusive()));
-  const available=new Set(availability.map(a=>a.dia+'|'+a.culto));
+  const saved=new Set(availability.map(a=>a.dia+'|'+a.culto));
+  const available=draftSelection || saved;
   const select=slotsForDate(selectedDate).length && selectedDate>=next && selectedDate<firstMonth(2)
     ? selectedDate:monthDays(next).find(d=>slotsForDate(d).length);
   const dayRows=rows.filter(x=>x.dia===select);
@@ -63,7 +64,7 @@ export function volunteerAgendaUI({rows=[],availability=[],selectedDate,labels={
    '<section class="card agenda-panel"><div class="agenda-section-title"><h3>Minhas escalas</h3><span>'+esc(monthTitle(current))+'</span></div>'+
    grid(current,d=>{
      const has=mine.some(x=>x.dia===d);
-     return '<div class="agenda-date '+(has?'agenda-assigned':'')+'" aria-label="'+esc(dayTitle(d))+(has?' com escala':'')+'">'+
+     return '<div class="agenda-date '+(has?'agenda-assigned':'')+(d===isoLocal(new Date())?' agenda-today':'')+'" aria-label="'+esc(dayTitle(d))+(has?' com escala':'')+'">'+
        '<span>'+Number(d.slice(-2))+'</span>'+(has?'<i aria-hidden="true"></i>':'')+'</div>';
    })+
    (mine.length?'<div class="agenda-items">'+mine.map(x=>'<div class="agenda-row"><span class="agenda-row-day">'+
@@ -71,21 +72,26 @@ export function volunteerAgendaUI({rows=[],availability=[],selectedDate,labels={
       esc(CULTOS[x.culto]||x.culto)+'</strong><small>'+esc(shortTime(x.horario))+' · '+esc(x.turma)+' · '+esc(labels[x.funcao]||x.funcao)+'</small></div></div>').join('')+'</div>'
       :'<p class="agenda-empty">Nenhuma escala publicada para este mês.</p>')+'</section>'+
    '<section class="card agenda-panel"><div class="agenda-section-title"><h3>Quando posso servir?</h3><span>'+esc(monthTitle(next))+'</span></div>'+
-   '<p class="mut agenda-help">Selecione um dia e marque os cultos em que você estará disponível. Cada escolha é salva automaticamente.</p>'+
+   '<p class="mut agenda-help">Selecione os períodos em que pode servir. Depois, toque em Enviar.</p>'+
    grid(next,d=>{
      const opts=slotsForDate(d),count=opts.filter(c=>available.has(d+'|'+c)).length;
-     return opts.length?'<button type="button" class="agenda-date agenda-date-button '+(d===select?'agenda-selected ':'')+(count?'agenda-available':'')+
+     const changed=opts.some(c=>available.has(d+'|'+c)!==saved.has(d+'|'+c));
+     const pendingRemoval=opts.some(c=>saved.has(d+'|'+c)&&!available.has(d+'|'+c));
+     return opts.length?'<button type="button" class="agenda-date agenda-date-button '+(d===select?'agenda-selected ':'')+(count?'agenda-available ':'')+(changed?'agenda-date-draft ':'')+(pendingRemoval?'agenda-date-removal ':'')+
       '" data-a="agenda-day" data-day="'+d+'" aria-pressed="'+(d===select)+'" aria-label="'+esc(dayTitle(d))+', '+count+' horários disponíveis"><span>'+
       Number(d.slice(-2))+'</span>'+(count?'<i aria-hidden="true"></i>':'')+'</button>':
       '<span class="agenda-date agenda-date-muted">'+Number(d.slice(-2))+'</span>';
    })+
    '<div class="agenda-select-panel"><div class="agenda-selected-title">'+esc(dayTitle(select))+'</div>'+
    '<div class="agenda-slots">'+slotsForDate(select).map(c=>{
-     const checked=available.has(select+'|'+c),label=c==='domingo_manha'?'Manhã':c==='domingo_noite'?'Noite':'Noite · Quarta-feira';
-     return '<button type="button" class="agenda-slot '+(checked?'on':'')+'" data-a="agenda-toggle" data-day="'+select+'" data-culto="'+c+
-      '" aria-pressed="'+checked+'">'+esc(label)+(checked?' ✓':'')+'</button>';
+     const checked=available.has(select+'|'+c),wasSent=saved.has(select+'|'+c);
+     const pending=checked!==wasSent,label=c==='domingo_manha'?'Manhã':c==='domingo_noite'?'Noite':'Noite · Quarta-feira';
+     const suffix=pending?(checked?' · Selecionado':' · Retirar'):(checked?' · Enviado':'');
+     return '<button type="button" class="agenda-slot '+(checked?'on ':'')+(wasSent&&!pending?'sent ':'')+
+       (pending?(checked?'pending ':' : 'pending-remove '):'')+'" data-a="agenda-toggle" data-day="'+select+'" data-culto="'+c+
+      '" aria-pressed="'+checked+'" aria-label="'+esc(label+suffix)+'">'+esc(label)+'<span class="agenda-slot-status">'+esc(suffix)+'</span></button>';
    }).join('')+'</div><p class="agenda-hint">Toque para marcar ou desmarcar. Pontos verdes indicam dias disponíveis.</p></div>'+
-   '<p class="agenda-count">'+availability.filter(a=>a.dia>=next&&a.dia<firstMonth(2)).length+' horário(s) disponível(is) marcados para o próximo mês.</p>'+
+   '<p class="agenda-count" data-agenda-count aria-live="polite">'+available.size+' período(s) selecionado(s) para o próximo mês.</p>'+
    (dayRows.length?'<p class="agenda-hint">Você já tem escala publicada neste dia.</p>':'')+
    '</section>';
 }
