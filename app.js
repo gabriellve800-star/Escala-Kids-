@@ -336,8 +336,9 @@ function activeUI() {
     case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
       kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
          families:state.kidsFamilies,term:state.kidsTerm,esc,
-         canCreate:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&
-           ['gerenciar_turmas','cadastrar_criancas'].includes(p.permissao))});
+         canManageClasses:isAdmin()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
+         canRegisterChild:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='cadastrar_criancas'),
+         inviteCode:state.kidsInviteCode});
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
     case 'convites':return invitesUI();
