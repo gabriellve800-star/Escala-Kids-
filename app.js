@@ -593,7 +593,92 @@ async function handleForm(form) {
   const val=x=>{const v=form.querySelector(`[name="${x}"]`)?.value||'';
     return ['lp','sp','p1','p2'].includes(x)?v:v.trim();};
   try {
-    if(id==='login') {
+    if(id==='family-login') {
+      const email=val('fl-email').toLowerCase(), password=val('fl-password');
+      if(!emailValido(email))throw new Error('Confira seu e-mail.');
+      const {error}=await sb.auth.signInWithPassword({email,password});
+      if(error)throw new Error('Credenciais inválidas.');
+      state.tab='family';state.auth='family-login';
+      await boot();
+      notify('Acesso verificado.');
+    } else if(id==='family-signup') {
+      const code=val('fs-code').toLowerCase(), email=val('fs-email').toLowerCase();
+      const password=val('fs-password');
+      if(!/^[0-9a-f]{64}$/.test(code)||!emailValido(email)||
+        !(password.length>=10&&password.length<=128&&/[a-z]/.test(password)&&
+          /[A-Z]/.test(password)&&/\d/.test(password)&&/[^a-z0-9]/i.test(password)))
+        throw new Error('Confira convite, e-mail e senha forte.');
+      const checked=await sb.rpc('kids_convite_familia_valido',{p_codigo:code});
+      if(checked.error||!checked.data)throw new Error('Convite inválido ou encerrado.');
+      // A primeira validação não consome o convite. O resgate após verificação é atômico.
+      const {error}=await sb.auth.signUp({email,password,options:{
+        emailRedirectTo:location.origin+location.pathname
+      }});
+      if(error)throw new Error('Não foi possível processar o cadastro. Confira as informações.');
+      try{await sb.auth.signOut({scope:'local'});}catch{/* sessão pode não existir */}
+      state.user=null;state.profile=null;state.family=null;
+      state.auth='family-email-wait';
+      notify('Confira o e-mail e depois entre para confirmar seu convite.');
+    } else if(id==='family-redeem') {
+      if(!state.user||state.profile)throw new Error('Acesso familiar indisponível.');
+      const code=val('fr-code').toLowerCase(),name=val('fr-name').replace(/\s+/g,' ');
+      if(!/^[0-9a-f]{64}$/.test(code)||name.length<3||name.length>120)
+        throw new Error('Preencha os dados e seu código familiar.');
+      const {error}=await sb.rpc('kids_resgatar_convite_familia',{p_codigo:code,p_nome:name});
+      if(error)throw new Error('Convite indisponível ou e-mail ainda não confirmado.');
+      await readProfile();
+      state.auth='family-wait';
+      notify('Solicitação recebida. Aguarde aprovação da equipe.');
+    } else if(id==='kids-class') {
+      if(!canWork())throw new Error('Sem acesso a turmas.');
+      const pos=Number(val('kid-pos')),name=val('kid-class-name').replace(/\s+/g,' ');
+      const min=Number(val('kid-min')),max=Number(val('kid-max'));
+      if(!Number.isInteger(pos)||pos<1||pos>4||name.length<2||name.length>60||
+         !Number.isInteger(min)||!Number.isInteger(max)||min<0||max>215||max<min)
+        throw new Error('Verifique o nome e os limites etários da turma.');
+      const existing=state.kidsClasses.find(x=>x.posicao===pos);
+      const {error}=existing
+        ?await sb.from('turmas_kids').update({nome,idade_min_meses:min,idade_max_meses:max,
+          alterada_em:new Date().toISOString()}).eq('id',existing.id)
+        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,idade_max_meses:max});
+      if(error)throw new Error('Não foi possível salvar esta turma. Verifique as permissões.');
+      await loadKids({silent:true});
+      notify('Turma atualizada.');
+    } else if(id==='kids-child-team'||id==='kids-child-family') {
+      const name=val('kid-child-name').replace(/\s+/g,' '),dob=val('kid-child-dob');
+      const classId=val('kid-child-class');
+      if(name.length<2||name.length>120||!/^\d{4}-\d{2}-\d{2}$/.test(dob)||
+         !state.kidsClasses.some(t=>t.id===classId&&t.ativa))
+        throw new Error('Verifique os dados e a turma.');
+      if(!state.kidsTerm)throw new Error('Termo não publicado. Cadastro bloqueado.');
+      if(id==='kids-child-family'&&!form.querySelector('[name="kid-accept"]')?.checked)
+        throw new Error('É necessário ler e aceitar o termo.');
+      const {data,error}=await sb.rpc('kids_criar_crianca',{
+        p_nome:name,p_nascimento:dob,p_turma:classId,p_versao:state.kidsTerm.versao
+      });
+      if(error||!Array.isArray(data)||data.length!==1)
+        throw new Error('Não foi possível registrar a ficha. Verifique a autorização.');
+      await loadKids({silent:true});
+      notify('Cadastro criado com segurança. Identificador: '+data[0].numero);
+    } else if(id==='kids-link-child') {
+      if(!canWork())throw new Error('Sem permissão.');
+      const idChild=val('kid-link-id'),idFamily=val('kid-link-parent');
+      const {error}=await sb.rpc('kids_vincular_responsavel',{
+        p_crianca:idChild,p_responsavel:idFamily
+      });
+      if(error)throw new Error('Não foi possível solicitar consentimento. Confira o vínculo.');
+      await loadKids({silent:true});
+      notify('Vínculo encaminhado para confirmação do responsável.');
+    } else if(id==='family-privacy-request') {
+      if(state.family?.status!=='ativo')throw new Error('Sem acesso familiar.');
+      const type=val('pr-kind'),child=val('pr-child')||null;
+      if(!['acesso','correcao','revogacao','exclusao'].includes(type))
+        throw new Error('Solicitação inválida.');
+      const {error}=await sb.rpc('kids_pedir_privacidade',{p_tipo:type,p_crianca:child});
+      if(error)throw new Error('Não foi possível enviar sua solicitação.');
+      await loadKids({silent:true});
+      notify('Solicitação enviada à administração.');
+    } else if(id==='login') {
       const username=cleanUsername(val('lu'));
       const isEmail=username.includes('@');
       if(isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username))throw new Error('Digite um e-mail válido.');
