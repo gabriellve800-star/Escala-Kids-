@@ -154,7 +154,7 @@ function tabs() {
   if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
   if (isLeader()) return [['escala','Escala','cal'],['kids','Kids','users'],['equipe','Equipe','users'],
     ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
-  return [['escala','Minha Escala','cal'],['inicio','Início','home'],['perfil','Perfil','user']];
+  return [['escala','Minha Escala','cal'],...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
   syncNavigation($('#nav'),tabs(),state.tab,ico,esc);
@@ -191,7 +191,7 @@ function authUI() {
   return `<div class="hero" style="margin-top:14px"><h2 style="margin:0 0 8px">Bem-vindo ao Escala Kids</h2><p>Entre para ver sua escala e cuidar dos pequenos.</p></div>
     <form data-form="login">${field('lu','Usuário ou e-mail','text','autocomplete="username" required')}${field('lp','Senha','password','autocomplete="current-password" required')}
       <div style="height:10px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Entrar</button></form>
-    <div style="height:8px"></div><button class="btn ghost" data-a="signup">Tenho um convite</button>`;
+    <div style="height:8px"></div><button class="btn ghost" data-a="signup">Tenho um convite</button><div style="height:8px"></div><button class="btn ghost" data-a="family-access">Sou responsável</button>`;
 }
 function functionsOf(id) { return state.functions.filter(x=>x.pessoa_id===id).map(x=>x.funcao); }
 function draftOf(person) {
@@ -514,7 +514,7 @@ async function loadKids({silent=false}={}) {
   ];
   if(team){
     tasks.push(sb.rpc('kids_familias_pendentes'));
-    if(isAdmin()) tasks.push(sb.from('permissoes_equipe_kids').select('pessoa_id,permissao'));
+    tasks.push(sb.from('permissoes_equipe_kids').select('pessoa_id,permissao'));
   } else {
     tasks.push(sb.from('vinculos_kids').select('crianca_id,responsavel_id,status'));
     tasks.push(sb.from('solicitacoes_privacidade_kids').select('id,tipo,status,crianca_id,criado_em')
@@ -530,7 +530,7 @@ async function loadKids({silent=false}={}) {
   state.kidsChildren=out[1].data||[];
   state.kidsTerm=(out[2].data||[])[0]||null;
   state.kidsFamilies=team?(out[3].data||[]):[];
-  state.kidsPermissions=team&&isAdmin()?(out[4]?.data||[]):[];
+  state.kidsPermissions=team?(out[4]?.data||[]):[];
   state.kidsLinks=!team?(out[3].data||[]):[];
   state.kidsRequests=!team?(out[4].data||[]):[];
   state.kidsError=false;if(!silent)render();
@@ -768,7 +768,39 @@ async function confirmAction() {
   if(!m||state.busy)return;
   state.busy=true;render();
   try {
-    if(m.action==='review') {
+    if(m.action==='kid-perm-change') {
+      if(!isAdmin())throw new Error('Apenas o administrador pode delegar permissões.');
+      const [person,permission]=String(m.id||'').split('|');
+      if(!person||!Object.hasOwn(KIDS_PERMISSIONS,permission)||
+        !state.people.some(p=>p.id===person&&p.status==='ativo'))
+        throw new Error('Permissão inválida.');
+      const granted=state.kidsPermissions.some(x=>x.pessoa_id===person&&x.permissao===permission);
+      const {error}=granted
+        ?await sb.from('permissoes_equipe_kids').delete().eq('pessoa_id',person).eq('permissao',permission)
+        :await sb.from('permissoes_equipe_kids').insert({pessoa_id:person,permissao:permission,
+          concedida_por:state.user.id});
+      if(error)throw new Error('Não foi possível alterar a permissão.');
+      await loadKids({silent:true});
+      notify(granted?'Permissão revogada.':'Permissão concedida.');
+    } else if(m.action==='kids-approve-family') {
+      const {error}=await sb.rpc('kids_aprovar_familia',{p_responsavel:m.id});
+      if(error)throw new Error('Não foi possível aprovar este responsável.');
+      await loadKids({silent:true});
+      notify('Responsável aprovado.');
+    } else if(m.action==='kids-approve-child') {
+      const {error}=await sb.rpc('kids_aprovar_crianca',{p_crianca:m.id});
+      if(error)throw new Error('Cadastro indisponível: confira o consentimento.');
+      await loadKids({silent:true});
+      notify('Cadastro infantil confirmado.');
+    } else if(m.action==='family-confirm-child') {
+      if(!state.kidsTerm)throw new Error('Termo não disponível.');
+      const {error}=await sb.rpc('kids_confirmar_filho',{
+        p_crianca:m.id,p_versao:state.kidsTerm.versao
+      });
+      if(error)throw new Error('Não foi possível confirmar o cadastro.');
+      await loadKids({silent:true});
+      notify('Consentimento registrado.');
+    } else if(m.action==='review') {
       const p=state.people.find(x=>x.id===m.id);if(!p)throw new Error('Cadastro não encontrado.');
       const d=draftOf(p);
       await gateway('review',{id:p.id,aprovar:m.approve,perfil:d.perfil,funcoes:d.funcoes,
@@ -804,6 +836,46 @@ async function actionClick(b) {
     if (await enforceInactivity()) return;
     await loadData(); notify('Solicitações atualizadas.'); return;
   }
+  if(a==='family-login-tab'){state.auth='family-login';render();return;}
+  if(a==='family-signup-tab'){state.auth='family-signup';render();return;}
+  if(a==='family-refresh'){await boot();notify('Situação conferida.');return;}
+  if(a==='kids-open'){
+    if(!canWork())return;state.tab='kids';state.kidsInviteCode='';
+    await loadKids({silent:true});render();return;
+  }
+  if(a==='kids-back'){state.tab=isAdmin()?'pessoas':isLeader()?'equipe':'perfil';
+    state.kidsInviteCode='';render();return;}
+  if(a==='kids-refresh'){await loadKids();return;}
+  if(a==='kids-invite-family'){
+    if(!canWork()||!(isLeader()||isAdmin()))return;
+    const {data,error}=await sb.rpc('kids_emitir_convite_familia',{p_dias:7});
+    if(error||!/^([0-9a-f]{64})$/.test(data||'')){
+      notify('Não foi possível emitir o convite familiar.',true);return;
+    }
+    state.kidsInviteCode=data;render();notify('Convite familiar criado. Copie o código agora.');return;
+  }
+  if(a==='kids-copy-invite'){
+    if(!state.kidsInviteCode)return;
+    try{await navigator.clipboard.writeText(state.kidsInviteCode);notify('Código familiar copiado.');}
+    catch{notify('Copie o código selecionando o texto.',true);}
+    return;
+  }
+  if(a==='kid-perm'){
+    if(!isAdmin()||!Object.hasOwn(KIDS_PERMISSIONS,b.dataset.p))return;
+    const granted=state.kidsPermissions.some(x=>x.pessoa_id===id&&x.permissao===b.dataset.p);
+    modal(granted?'Revogar permissão':'Conceder permissão',
+      (granted?'Remover ':'Liberar ')+KIDS_PERMISSIONS[b.dataset.p]+' para este voluntário? '+
+      'Isso não libera acesso a crianças fora da escala.',
+      'kid-perm-change',id+'|'+b.dataset.p);return;
+  }
+  if(a==='kids-approve-family'){modal('Aprovar responsável',
+    'Confirma a identidade familiar após a verificação de e-mail?','kids-approve-family',id);return;}
+  if(a==='kids-approve-child'){modal('Confirmar cadastro infantil',
+    'Verifique antes o vínculo e o consentimento. A ficha será ativada.','kids-approve-child',id);return;}
+  if(a==='family-confirm-child'){if(!state.kidsTerm)return;
+    modal('Registrar consentimento',
+      'Confirma que leu e aceita o termo versão '+state.kidsTerm.versao+
+      ' para o cadastro desta criança?','family-confirm-child',id);return;}
   if(a==='agenda-open'){state.tab='escala';render();$('#main').scrollTop=0;return;}
   if(a==='agenda-refresh'){await loadData();return;}
   if(a==='agenda-day'){
@@ -858,7 +930,7 @@ async function actionClick(b) {
     }
     const target=b.dataset.tab;
     if(target===state.tab)return;
-    state.tab=target;state.currentInvitation=null;
+    state.tab=target;state.currentInvitation=null;if(target!=='kids')state.kidsInviteCode='';
     const refresh=(target==='aprov' && canApprove()) || target==='escala';
     state.loadingTab=refresh;
     renderScreenTransition();
@@ -873,6 +945,7 @@ async function actionClick(b) {
   }
   if(a==='login'){state.auth='login';render();return;}
   if(a==='signup'){state.auth='signup';state.inviteVerified=false;render();return;}
+  if(a==='family-access'){state.auth='family-login';render();return;}
   if(a==='changeinvite'){state.inviteVerified=false;render();return;}
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
@@ -940,7 +1013,7 @@ if(isReady()) {
     auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:AUTH_STORAGE_KEY},
   });
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;state.auth='login';render();}
+    if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;state.family=null;state.kidsInviteCode='';state.kidsChildren=[];state.kidsLinks=[];state.auth='login';render();}
   });
 }
 render();
