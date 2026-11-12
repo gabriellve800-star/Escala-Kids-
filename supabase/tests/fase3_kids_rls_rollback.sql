@@ -3,7 +3,7 @@
 begin;
 insert into auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at)
 select v.id::uuid,'00000000-0000-0000-0000-000000000000'::uuid,'authenticated','authenticated',
-  'fase3-'+v.suffix+'@example.invalid','!',now(),now(),now()
+  'fase3-'||v.suffix||'@example.invalid','!',now(),now(),now()
 from (values
 ('11111111-1111-4111-8111-000000000001','admin'),
 ('11111111-1111-4111-8111-000000000002','leader'),
