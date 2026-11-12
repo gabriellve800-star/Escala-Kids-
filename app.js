@@ -611,6 +611,13 @@ async function confirmAction() {
       await gateway('manage',{id:p.id,...d});notify('Permissões atualizadas.');
     } else if(m.action==='revoke') {
       await gateway('revoke_invite',{id:m.id});notify('Convite revogado.');
+    } else if(m.action==='discard-draft-tab') {
+      state.availabilityDraft=null;state.availabilitySuccess=false;
+      state.tab=m.id;
+    } else if(m.action==='discard-draft-out') {
+      state.availabilityDraft=null;state.availabilitySuccess=false;
+      await sb.auth.signOut({scope:'global'});
+      state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();
     } else if(m.action==='delete-schedule') {
       if(!isLeader())throw new Error('Somente a liderança pode retirar escalas.');
       const {error}=await sb.from('escalas').delete().eq('id',m.id);
@@ -677,6 +684,9 @@ async function actionClick(b) {
     return;
   }
   if(a==='tab'){
+    if(state.tab==='escala' && b.dataset.tab!=='escala' && availabilityDirty()){
+      modal('Rascunho não enviado','Sair e descartar estas alterações?','discard-draft-tab',b.dataset.tab);return;
+    }
     state.tab=b.dataset.tab;state.currentInvitation=null;
     if ((state.tab === 'aprov' && canApprove()) || state.tab==='escala') await loadData();
     else render();
@@ -688,6 +698,9 @@ async function actionClick(b) {
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
   if(a==='out'){
+    if(availabilityDirty()){
+      modal('Rascunho não enviado','Sair da conta e descartar estas alterações?','discard-draft-out');return;
+    }
     await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;forgetHumanActivity();
     state.auth='login';state.drafts={};state.people=[];render();return;
   }
@@ -753,6 +766,9 @@ const captureActivity = () => {
   markHumanActivity();
 };
 window.addEventListener('pointerdown',captureActivity,{passive:true});
+window.addEventListener('beforeunload', event=>{
+  if(availabilityDirty()){event.preventDefault();event.returnValue='';}
+});
 window.addEventListener('keydown',captureActivity);
 window.addEventListener('focus',() => {
   if (!state.user) return;
