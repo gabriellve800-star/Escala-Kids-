@@ -323,6 +323,9 @@ function teamUI() {
   return h;
 }
 function activeUI() {
+  if(state.loadingTab)return '<div class="screen-loading" aria-busy="true" aria-label="Carregando">'+
+    '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-card"></div>'+
+    '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>';
   switch(state.tab) {
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
@@ -415,6 +418,23 @@ function paintDraftSelection(){
   renderAvailabilityBar();
 }
 
+function reducedMotion() {
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+function renderScreenTransition() {
+  const paint=()=>render();
+  if(!reducedMotion() && typeof document.startViewTransition==='function'){
+    document.startViewTransition(paint);
+  }else{
+    paint();
+    const main=$('#main');
+    if(!reducedMotion()){
+      main.classList.remove('screen-enter');
+      void main.offsetWidth;
+      main.classList.add('screen-enter');
+    }
+  }
+}
 function render() {
   renderHeader(); renderNav();
   $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
@@ -430,7 +450,7 @@ async function readProfile() {
   if(pe || !p){state.profile=null;await sb.auth.signOut({scope:'local'});state.user=null;notify('Conta sem perfil. Fale com o administrador.',true);return;}
   state.profile=p;
 }
-async function loadData() {
+async function loadData({silent=false}={}) {
   if (!sb || !canWork()) {render();return;}
   const jobs=[];
   if(isLeader()) jobs.push(sb.from('perfis').select('*').order('nome'));
@@ -439,7 +459,7 @@ async function loadData() {
   if(canApprove())jobs.push(sb.from('convites').select('id,criado_por,expira_em,usos,usos_max,revogado,criado_em').order('criado_em',{ascending:false}).limit(50));
   if(isAdmin())jobs.push(sb.from('auditoria').select('id,quem,acao,alvo,quando').order('quando',{ascending:false}).limit(100));
   const res=await Promise.all(jobs);
-  if(res.some(r=>r.error)) {notify('Não foi possível carregar todas as informações.',true);render();return;}
+  if(res.some(r=>r.error)) {notify('Não foi possível carregar todas as informações.',true);if(!silent)render();return false;}
   let idx=0;state.people=res[idx++].data||[];state.functions=res[idx++].data||[];
   state.invites=canApprove()?res[idx++].data||[]:[];
   state.pendingCount=canApprove()?state.people.filter(p=>p.status==='pendente').length:0;
@@ -455,7 +475,8 @@ async function loadData() {
   const target=firstMonth(1);
   if(!state.selectedAvailabilityDate || state.selectedAvailabilityDate<target || state.selectedAvailabilityDate>=firstMonth(2))
     state.selectedAvailabilityDate=monthDays(target).find(d=>validSlot(d,'domingo_manha'))||monthDays(target).find(d=>validSlot(d,'quarta_noite'))||target;
-  state.drafts={};render();
+  state.drafts={};if(!silent)render();
+  return true;
 }
 async function boot() {
   if(!isReady()) {render();return;}
@@ -683,13 +704,24 @@ async function actionClick(b) {
     return;
   }
   if(a==='tab'){
+    if(state.availabilitySaving){notify('Conclua o envio antes de sair.',true);return;}
     if(state.tab==='escala' && b.dataset.tab!=='escala' && availabilityDirty()){
       modal('Rascunho não enviado','Sair e descartar estas alterações?','discard-draft-tab',b.dataset.tab);return;
     }
-    state.tab=b.dataset.tab;state.currentInvitation=null;
-    if ((state.tab === 'aprov' && canApprove()) || state.tab==='escala') await loadData();
-    else render();
-    $('#main').scrollTop=0;return;
+    const target=b.dataset.tab;
+    if(target===state.tab)return;
+    state.tab=target;state.currentInvitation=null;
+    const refresh=(target==='aprov' && canApprove()) || target==='escala';
+    state.loadingTab=refresh;
+    renderScreenTransition();
+    $('#main').scrollTop=0;
+    if(refresh){
+      await loadData({silent:true});
+      state.loadingTab=false;
+      renderScreenTransition();
+    }
+    try {navigator.vibrate?.(8);}catch{/* sem suporte */}
+    return;
   }
   if(a==='login'){state.auth='login';render();return;}
   if(a==='signup'){state.auth='signup';state.inviteVerified=false;render();return;}
@@ -743,6 +775,14 @@ async function actionClick(b) {
   if(a==='saveperson') {modal('Salvar alterações',`Confirmar as novas permissões de ${p.nome}?`,'manage',p.id);return;}
   if(a==='revoke') {modal('Revogar convite','Este link não poderá mais ser utilizado.','revoke',id);return;}
 }
+// Toque com resposta curta; o próprio nó de navegação não é recriado na troca.
+$('#app').addEventListener('pointerdown',e=>{
+  const btn=e.target.closest('#nav button[data-a="tab"]');
+  if(btn)btn.classList.add('pressing');
+},{passive:true});
+['pointerup','pointercancel'].forEach(type=>$('#app').addEventListener(type,()=>{
+  setTimeout(()=>$('#nav').querySelectorAll('.pressing').forEach(x=>x.classList.remove('pressing')),90);
+},{passive:true}));
 $('#app').addEventListener('submit', async e=>{const form=e.target.closest('form[data-form]');if(!form)return;e.preventDefault();await handleForm(form);});
 $('#app').addEventListener('click', async e=>{const b=e.target.closest('button[data-a]');if(!b||b.disabled)return;await actionClick(b);});
 
