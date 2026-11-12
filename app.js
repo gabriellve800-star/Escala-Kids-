@@ -347,12 +347,7 @@ function renderModal() {
 }
 function render() {
   renderHeader(); renderNav();
-  const main=$('#main'),login=main.querySelector('form[data-form="login"]');
-  // Uma leitura assíncrona da sessão pode provocar outro render enquanto a pessoa
-  // digita. Não substituir os inputs preenchidos: o navegador impediria o submit.
-  const preserveLogin=!state.user && state.auth==='login' && login &&
-    Array.from(login.querySelectorAll('input')).some(input=>input.value.length>0);
-  if (!preserveLogin) main.innerHTML=state.user && canWork()?activeUI():authUI();
+  $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
   renderToast();renderModal();
   paintInviteQR();
 }
@@ -406,15 +401,7 @@ async function boot() {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
     await loadData();
-  } else {
-    // O bootstrap pode terminar enquanto a pessoa digita. Nunca recriar o form,
-    // pois isso apagaria o usuário já preenchido e impediria o submit nativo.
-    const focused = document.activeElement;
-    const editing = !state.user && focused?.matches?.('input,textarea,select') &&
-      Boolean(focused.closest('form[data-form]'));
-    if (editing) { renderHeader();renderNav(); }
-    else render();
-  }
+  } else render();
 }
 function showError(error) {
   // supabase-js devolve detalhes em error.context para respostas não-2xx da função.
@@ -663,18 +650,10 @@ if(isReady()) {
     if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;state.auth='login';render();}
   });
 }
-// Não permitir preencher formulários antes do bootstrap da sessão terminar:
-// uma renderização posterior poderia apagar os campos ainda em edição.
-if (isReady()) {
-  renderHeader(); renderNav();
-  $('#main').innerHTML='<p class="loading">Verificando sessão…</p>';
-} else render();
+render();
 boot().then(() => {
   if (expiredOnStartup) notify('Sessão expirada por 14 dias sem atividade. Entre novamente.');
-}).catch(()=>{
-  render();
-  notify('Não foi possível conectar. Confira sua internet ou a configuração.',true);
-});
+}).catch(()=>notify('Não foi possível conectar. Confira sua internet ou a configuração.',true));
 // Somente uma interação humana e a abertura do app renovam os 14 dias.
 const captureActivity = () => {
   if (!state.user) return;
@@ -712,8 +691,11 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     try {
       const registration = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
       let refreshing = false;
+      let userAcceptedUpdate = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
+        // A primeira instalação também dispara controllerchange.
+        // Nunca interromper um formulário: recarregar só após tocar em Atualizar.
+        if (refreshing || !userAcceptedUpdate) return;
         refreshing = true;
         location.reload();
       });
@@ -727,6 +709,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
         box.innerHTML = '<span>Nova versão disponível</span><button type="button" class="pwa-update-btn">Atualizar</button>';
         document.body.append(box);
         box.querySelector('button').addEventListener('click', () => {
+          userAcceptedUpdate = true;
           box.querySelector('button').disabled = true;
           registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
         });
