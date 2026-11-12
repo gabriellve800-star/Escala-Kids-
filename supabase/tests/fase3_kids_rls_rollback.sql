@@ -195,6 +195,13 @@ begin
      where id='33333333-3333-4333-8333-000000000001';
     raise exception 'ANAD_EDITAVEL';
   exception when others then
+    if SQLSTATE<>'428C9' and SQLERRM<>'IDENTIFICADOR_IMUTAVEL' then raise; end if;
+  end;
+  begin
+    update public.criancas_kids set numero_interno=default
+      where id='33333333-3333-4333-8333-000000000001';
+    raise exception 'ANAD_EDITAVEL_COM_DEFAULT';
+  exception when others then
     if SQLERRM<>'IDENTIFICADOR_IMUTAVEL' then raise; end if;
   end;
   begin
