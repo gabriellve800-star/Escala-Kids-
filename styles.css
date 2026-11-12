@@ -163,7 +163,7 @@ button:disabled {opacity:.56;cursor:not-allowed}
 #nav {position:relative;isolation:isolate;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
 #nav .nav-indicator{
   position:absolute;left:0;top:7px;width:44px;height:40px;border-radius:15px;
-  background:var(--mint);opacity:0;pointer-events:none;z-index:0;
+  background:var(--mint);border:1.5px solid var(--pri);opacity:0;pointer-events:none;z-index:0;
   transition:transform 220ms cubic-bezier(.18,1.25,.34,1),opacity 160ms ease
 }
 #nav button{
