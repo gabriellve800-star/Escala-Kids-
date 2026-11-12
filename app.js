@@ -401,7 +401,15 @@ async function boot() {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
     await loadData();
-  } else render();
+  } else {
+    // O bootstrap pode terminar enquanto a pessoa digita. Nunca recriar o form,
+    // pois isso apagaria o usuário já preenchido e impediria o submit nativo.
+    const focused = document.activeElement;
+    const editing = !state.user && focused?.matches?.('input,textarea,select') &&
+      Boolean(focused.closest('form[data-form]'));
+    if (editing) { renderHeader();renderNav(); }
+    else render();
+  }
 }
 function showError(error) {
   // supabase-js devolve detalhes em error.context para respostas não-2xx da função.
