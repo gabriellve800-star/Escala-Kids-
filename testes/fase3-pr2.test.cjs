@@ -17,7 +17,7 @@ test('PR2: familia e equipe sao identidades segregadas e nao herdam roles',()=>{
  assert.match(app,/state\.family/);
  assert.match(app,/\.from\('familias_kids'\)/);
  assert.match(app,/state\.profile=p;state\.family=null/);
- assert.match(sql,/not exists\(select 1 from public\.perfis where id=uid\)/);
+ assert.match(sql,/if exists\(select 1 from public\.perfis where id=uid\)/);
  assert.doesNotMatch(app,/state\.profile\s*=\s*\{\s*perfil:\s*'voluntario'/);
 });
 test('PR2: consentimento e termo oficiais exigidos antes de gravar criancas',()=>{
