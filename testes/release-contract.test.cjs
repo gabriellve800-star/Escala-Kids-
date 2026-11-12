@@ -21,12 +21,12 @@ test('função Edge tem mapeamento de erro e logs sanitizados',()=>{
  assert.doesNotMatch(fn,/console\.(?:warn|log|error)\([^\n]*senha|console\.(?:warn|log|error)\([^\n]*email:/);
  assert.match(sec,/weak_password/);
 });
-test('site candidato v1.2.5 tem service worker e cache coerentes',()=>{
- assert.match(html,/<title>Escala Kids · v1\.2\.5<\/title>/);
- assert.match(html,/app\.js\?v=1\.2\.5/);
- assert.match(sw,/app\.js\?v=1\.2\.5/);
- assert.match(sw,/escala-kids-v1\.2\.5/);
- assert.match(app,/v1\.2\.5/);
+test('site candidato v1.2.6 tem service worker e cache coerentes',()=>{
+ assert.match(html,/<title>Escala Kids · v1\.2\.6<\/title>/);
+ assert.match(html,/app\.js\?v=1\.2\.6/);
+ assert.match(sw,/app\.js\?v=1\.2\.6/);
+ assert.match(sw,/escala-kids-v1\.2\.6/);
+ assert.match(app,/v1\.2\.6/);
  assert.match(config,/pntzfuxwkjreugxzovjj\.supabase\.co/);
  assert.doesNotMatch(config,/sb_secret_|eofoeijyfpptcktiqeah/i);
 });
