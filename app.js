@@ -347,9 +347,79 @@ function renderModal() {
     <button class="btn pri" data-a="confirm">Confirmar</button><div style="height:8px"></div><button class="btn ghost" data-a="cancel">Cancelar</button></div>`;
   $('#app').appendChild(d);
 }
+
+function availabilityBase() { return ownAvailability(state.availability,state.user?.id); }
+function availabilityDirty() {
+  return !!state.availabilityDraft && !selectionEqual(availabilityBase(),state.availabilityDraft);
+}
+// Elemento fixo no shell, entre o conteúdo rolável e a navegação.
+function renderAvailabilityBar() {
+  let bar=$('#agenda-draft-bar');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='agenda-draft-bar';bar.className='agenda-draftbar';
+    $('#app').insertBefore(bar,$('#nav'));
+  }
+  const show=state.user && canWork() && !isLeader() && state.tab==='escala' &&
+    (availabilityDirty() || state.availabilitySuccess);
+  bar.hidden=!show;
+  if(!show){bar.replaceChildren();return;}
+  if(state.availabilitySuccess){
+    bar.className='agenda-draftbar agenda-draftbar-success';
+    bar.innerHTML='<span role="status">Disponibilidade enviada.</span>';return;
+  }
+  bar.className='agenda-draftbar';
+  const total=state.availabilityDraft.size;
+  bar.innerHTML='<div class="agenda-draftbar-title" aria-live="polite"><strong>'+total+
+    ' período(s) selecionado(s)</strong><small>Alterações ainda não enviadas</small></div>'+
+    '<div class="agenda-draftbar-buttons"><button class="btn ghost" type="button" data-a="agenda-cancel" '+
+    (state.availabilitySaving?'disabled':'')+'>Cancelar</button>'+
+    '<button class="btn pri" type="button" data-a="agenda-save" '+
+    (state.availabilitySaving?'disabled aria-busy="true"':'')+'>'+
+    (state.availabilitySaving?'Enviando…':'Enviar')+'</button></div>';
+}
+// Atualiza apenas botões/indicadores envolvidos, preservando scroll e foco.
+function paintDraftSelection(){
+  if(!state.user || state.tab!=='escala' || isLeader())return;
+  const saved=availabilityBase(),selected=state.availabilityDraft||saved;
+  $('#main').querySelectorAll('.agenda-slot[data-a="agenda-toggle"]').forEach(btn=>{
+    const chosen=selected.has(btn.dataset.day+'|'+btn.dataset.culto);
+    const sent=saved.has(btn.dataset.day+'|'+btn.dataset.culto);
+    const pending=chosen!==sent;
+    btn.classList.toggle('on',chosen);
+    btn.classList.toggle('sent',sent&&!pending);
+    btn.classList.toggle('pending',chosen&&pending);
+    btn.classList.toggle('pending-remove',!chosen&&pending);
+    btn.setAttribute('aria-pressed',String(chosen));
+    const suffix=pending?(chosen?' · Selecionado':' · Retirar'):(chosen?' · Enviado':'');
+    const name=btn.dataset.culto==='domingo_manha'?'Manhã':
+      btn.dataset.culto==='domingo_noite'?'Noite':'Noite · Quarta-feira';
+    btn.setAttribute('aria-label',name+suffix);
+    const label=btn.querySelector('.agenda-slot-status');if(label)label.textContent=suffix;
+  });
+  $('#main').querySelectorAll('.agenda-date-button[data-a="agenda-day"]').forEach(btn=>{
+    const day=btn.dataset.day, opts=validSlot(day,'domingo_manha')
+      ? ['domingo_manha','domingo_noite']:['quarta_noite'];
+    const chosen=opts.some(c=>selected.has(day+'|'+c));
+    const modified=opts.some(c=>selected.has(day+'|'+c)!==saved.has(day+'|'+c));
+    const removing=opts.some(c=>saved.has(day+'|'+c)&&!selected.has(day+'|'+c));
+    btn.classList.toggle('agenda-available',chosen);
+    btn.classList.toggle('agenda-date-draft',modified);
+    btn.classList.toggle('agenda-date-removal',removing);
+    let dot=btn.querySelector('i');
+    if(chosen&&!dot){dot=document.createElement('i');dot.setAttribute('aria-hidden','true');btn.append(dot);}
+    if(!chosen&&dot)dot.remove();
+    btn.setAttribute('aria-label',day+', '+opts.filter(c=>selected.has(day+'|'+c)).length+' períodos selecionados');
+  });
+  const count=$('[data-agenda-count]');
+  if(count)count.textContent=selected.size+' período(s) selecionado(s) para o próximo mês.';
+  renderAvailabilityBar();
+}
+
 function render() {
   renderHeader(); renderNav();
   $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
+  renderAvailabilityBar();
   renderToast();renderModal();
   paintInviteQR();
 }
