@@ -28,12 +28,12 @@ export function kidsPermissionChips(personId,current,esc){
        data-a="kid-perm" data-id="${safe(personId,esc)}" data-p="${key}"
        aria-pressed="${current.includes(key)}">${safe(label,esc)}</button>`).join('')}</div></div>`;
 }
-export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,canCreate=true}){
+export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,canManageClasses=false,canRegisterChild=false,inviteCode=''}){
  let out=`<div class="kids-heading"><button class="btn ghost kids-back" data-a="kids-back">Voltar</button>
   <h2>Kids</h2><p class="mut">Turmas, cadastros e segurança dos pequenos.</p></div>`;
  if(!classes.length) out+=`<div class="card"><h3>Configure as turmas</h3><p class="mut">Os nomes e as idades são definidos pela liderança. Nenhuma turma fictícia será publicada.</p></div>`;
  out+='<h3 class="kids-section">Turmas</h3>';
- if(isAdmin || canCreate) {
+ if(canManageClasses) {
   for(let pos=1;pos<=4;pos++){
     const t=classes.find(x=>x.posicao===pos);
     out+=`<div class="card"><h3>Turma ${pos}</h3>
@@ -54,6 +54,9 @@ export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,
    out+=`<h3 class="kids-section">Convite de família</h3><div class="card">
      <p class="mut">Convites próprios dos responsáveis, diferentes dos convites da equipe. Compartilhe o código somente com a família autorizada.</p>
      <button class="btn pri" type="button" data-a="kids-invite-family">Gerar convite familiar</button>
+     ${inviteCode?`<div class="kids-invite"><p class="mut">Copie agora. O código não será exibido novamente após sair desta tela.</p>
+     <code>${safe(inviteCode,esc)}</code>
+     <button type="button" data-a="kids-copy-invite" class="btn ghost">Copiar código familiar</button></div>`:''}
      </div>`;
  }
  out+=`<h3 class="kids-section">Responsáveis</h3>`;
@@ -62,7 +65,7 @@ export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,
  <span class="tag ${f.status==='ativo'?'':'warn'}">${f.status==='ativo'?'Ativo':'Aguardando aprovação'}</span></div>
  ${f.status==='pendente'?`<button class="btn ghost" data-a="kids-approve-family" data-id="${safe(f.usuario_id,esc)}">Aprovar responsável</button>`:''}</div>`).join('');
  out+=`<h3 class="kids-section">Crianças</h3>`;
- if(term&&classes.some(c=>c.ativa)&&canCreate) {
+ if(term&&classes.some(c=>c.ativa)&&canRegisterChild) {
    out+=`<div class="card"><h3>Novo cadastro pela equipe</h3><p class="mut">A ficha ficará aguardando o consentimento da família. Nenhum dado de saúde é solicitado aqui.</p>
     <form data-form="kids-child-team" class="kids-form">
       <label>Nome da criança<input class="in" name="kid-child-name" minlength="2" maxlength="120" autocomplete="off" required></label>
