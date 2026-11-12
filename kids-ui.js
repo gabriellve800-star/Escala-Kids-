@@ -99,7 +99,16 @@ export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,
 export function familyAccessUI({family,auth,term,esc}){
  if(family && family.status!=='ativo')return `<div class="card"><h2>Cadastro em análise</h2>
   <p class="mut">Seu e-mail foi confirmado. A equipe precisa aprovar seu acesso familiar antes do cadastro de crianças.</p>
-  <button class="btn ghost" data-a="family-refresh">Verificar aprovação</button></div>
+  <button class="btn ghost" data-a="family-refresh">Verificar aprovação</button>
+  <details class="kids-term"><summary>Direitos e privacidade</summary>
+   <form data-form="family-privacy-request" class="kids-form">
+    <label>Solicitação<select class="in" name="pr-kind">
+      <option value="acesso">Acessar meus dados</option>
+      <option value="correcao">Correção</option>
+      <option value="revogacao">Revogação</option>
+      <option value="exclusao">Exclusão</option></select></label>
+    <button type="submit" class="btn ghost">Enviar solicitação</button>
+   </form></details></div>
   <button class="btn ghost" data-a="out">Sair</button>`;
  if(auth==='family-signup')return `<h2>Cadastro de responsável</h2><p class="mut">Você precisa de um convite próprio para famílias. Primeiro confirme seu e-mail. Depois, entre e valide o convite com a equipe.</p>
  <form data-form="family-signup" class="kids-form">
