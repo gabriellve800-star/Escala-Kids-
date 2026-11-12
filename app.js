@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.5';
 import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
 import { syncNavigation } from './navigation.js?v=1.2.5';
+import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.6';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -108,6 +109,8 @@ const state = {
   currentInvitation:null, pendingCount:0, demoTheme:'',
   schedules:[], availability:[], agendaError:false, selectedAvailabilityDate:'',
   availabilityDraft:null, availabilitySaving:false, availabilitySuccess:false, loadingTab:false,
+  family:null, kidsClasses:[], kidsChildren:[], kidsLinks:[], kidsFamilies:[],
+  kidsPermissions:[], kidsRequests:[], kidsTerm:null, kidsInviteCode:'', kidsError:false,
 };
 let sb;
 let toastTimer;
@@ -139,15 +142,17 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.5</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.6</small>');
   }
-  $('#seg').innerHTML=state.user && canWork()
+  $('#seg').innerHTML=state.user && (canWork()||state.family?.status==='ativo')
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
 }
 function tabs() {
-  if (!state.user || !canWork()) return [];
-  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
-  if (isLeader()) return [['escala','Escala','cal'],['equipe','Equipe','users'],
+  if (!state.user) return [];
+  if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
+  if (!canWork()) return [];
+  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
+  if (isLeader()) return [['escala','Escala','cal'],['kids','Kids','users'],['equipe','Equipe','users'],
     ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
   return [['escala','Minha Escala','cal'],['inicio','Início','home'],['perfil','Perfil','user']];
 }
@@ -220,7 +225,7 @@ function approvalsUI() {
 }
 function peopleUI() {
   if (!isAdmin()) return `<h2>Sem permissão</h2>`;
-  let h=`<h2>Pessoas</h2><p class="mut">Perfis e permissões. Só o administrador altera isto.</p><div style="height:12px"></div>`;
+  let h=`<h2>Pessoas</h2><p class="mut">Perfis e permissões. Só o administrador altera isto.</p><button class="btn ghost" data-a="kids-open" style="margin:12px 0">Gerenciar Kids e turmas</button><div style="height:12px"></div>`;
   const people=state.people.filter(p=>p.status==='ativo'||p.status==='desativado');
   if (!people.length) return h+'<div class="card">Nenhuma pessoa cadastrada.</div>';
   for (const p of people) {
@@ -229,6 +234,7 @@ function peopleUI() {
       ${roleChip(p,true)}${functionChips(p)}
       ${d.perfil==='lider'?`<div class="row" style="border:0"><span class="mini">Pode aprovar cadastros</span><button class="tog ${d.pode_aprovar?'on':''}" data-a="ap" data-id="${p.id}" role="switch" aria-checked="${d.pode_aprovar}" aria-label="Pode aprovar: ${esc(p.nome)}"></button></div>`:''}
       ${p.id!==state.user.id?`<div class="row" style="border:0"><span class="mini">Conta ${d.status==='ativo'?'ativa':'desativada'}</span><button class="chip ${d.status==='ativo'?'on':''}" data-a="status" data-id="${p.id}">${d.status==='ativo'?'Desativar':'Reativar'}</button></div>`:''}
+      ${p.status==='ativo' && p.id!==state.user?.id ? kidsPermissionChips(p.id,state.kidsPermissions.filter(x=>x.pessoa_id===p.id).map(x=>x.permissao),esc) : ''}
       <button class="btn pri" style="margin-top:12px" data-a="saveperson" data-id="${p.id}">Salvar alterações</button></div>`;
   }
   return h;
@@ -318,7 +324,7 @@ function profileUI() {
 function waitingUI(title, description) {return `<h2>${esc(title)}</h2><p class="mut">${esc(description)}</p><div class="card" style="margin-top:16px"><h3>Próxima etapa</h3><p class="mut" style="margin-top:6px">Seu acesso já está protegido. Este recurso será conectado ao banco na próxima fase.</p></div>`;}
 function teamUI() {
   const people=state.people.filter(p=>p.status==='ativo');
-  let h='<h2>Equipe</h2><p class="mut">Pessoas do ministério. Os indicadores de cuidado entram com as escalas reais na fase 2.</p><div style="height:12px"></div>';
+  let h='<h2>Equipe</h2><p class="mut">Pessoas do ministério.</p><button class="btn ghost" data-a="kids-open" style="margin:12px 0">Abrir Kids e turmas</button><div style="height:12px"></div>';
   for(const p of people) h+=`<div class="card"><div class="row" style="border:0;padding:0"><div><span class="who">${esc(p.nome)}</span><br><span class="mut">${esc(functionsOf(p.id).map(f=>FN[f]).join(', ')||'Funções a definir')}</span></div><span class="tag">${esc(PF[p.perfil])}</span></div></div>`;
   return h;
 }
@@ -327,6 +333,11 @@ function activeUI() {
     '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-card"></div>'+
     '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>';
   switch(state.tab) {
+    case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
+      kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
+         families:state.kidsFamilies,term:state.kidsTerm,esc,
+         canCreate:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&
+           ['gerenciar_turmas','cadastrar_criancas'].includes(p.permissao))});
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
     case 'convites':return invitesUI();
@@ -438,18 +449,31 @@ function renderScreenTransition() {
 }
 function render() {
   renderHeader(); renderNav();
-  $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
+  if (state.user && state.family?.status==='ativo') {
+    $('#main').innerHTML=familyPortalUI({family:state.family,classes:state.kidsClasses,children:state.kidsChildren,
+      links:state.kidsLinks,requests:state.kidsRequests,term:state.kidsTerm,esc,tab:state.tab});
+  } else if(state.user && !state.profile) {
+    $('#main').innerHTML=familyAccessUI({family:state.family,auth:state.family?'family-wait':'family-redeem',term:state.kidsTerm,esc});
+  } else if(!state.user && ['family-login','family-signup','family-email-wait'].includes(state.auth)){
+    $('#main').innerHTML=familyAccessUI({family:null,auth:state.auth,term:state.kidsTerm,esc});
+  } else $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
   renderAvailabilityBar();
   renderToast();renderModal();
   paintInviteQR();
 }
 async function readProfile() {
   const {data:u,error:e}=await sb.auth.getUser();
-  if(e || !u?.user){state.user=null;state.profile=null;return;}
+  if(e || !u?.user){state.user=null;state.profile=null;state.family=null;return;}
   state.user=u.user;
   const {data:p,error:pe}=await sb.from('perfis').select('*').eq('id',u.user.id).maybeSingle();
-  if(pe || !p){state.profile=null;await sb.auth.signOut({scope:'local'});state.user=null;notify('Conta sem perfil. Fale com o administrador.',true);return;}
-  state.profile=p;
+  if(pe) throw new Error('Não foi possível verificar o seu acesso.');
+  if(p){state.profile=p;state.family=null;return;}
+  state.profile=null;
+  // Família é uma identidade própria. Jamais criar um perfil de voluntário fictício.
+  const {data:family,error:fe}=await sb.from('familias_kids').select('usuario_id,nome,status')
+    .eq('usuario_id',u.user.id).maybeSingle();
+  if(fe)throw new Error('Não foi possível verificar o acesso familiar.');
+  state.family=family||null;
 }
 async function loadData({silent=false}={}) {
   if (!sb || !canWork()) {render();return;}
@@ -479,6 +503,38 @@ async function loadData({silent=false}={}) {
   state.drafts={};if(!silent)render();
   return true;
 }
+async function loadKids({silent=false}={}) {
+  if(!sb||!state.user||(!canWork()&&state.family?.status!=='ativo'))return false;
+  const team=canWork();
+  const tasks=[
+    sb.from('turmas_kids').select('id,posicao,nome,idade_min_meses,idade_max_meses,ativa').order('posicao'),
+    sb.from('criancas_kids').select('id,numero,nome,nascimento,turma_id,origem,status').order('nome').limit(150),
+    sb.rpc('kids_termo_atual'),
+  ];
+  if(team){
+    tasks.push(sb.rpc('kids_familias_pendentes'));
+    if(isAdmin()) tasks.push(sb.from('permissoes_equipe_kids').select('pessoa_id,permissao'));
+  } else {
+    tasks.push(sb.from('vinculos_kids').select('crianca_id,responsavel_id,status'));
+    tasks.push(sb.from('solicitacoes_privacidade_kids').select('id,tipo,status,crianca_id,criado_em')
+      .order('criado_em',{ascending:false}).limit(50));
+  }
+  const out=await Promise.all(tasks);
+  if(out.some(x=>x.error)){
+    state.kidsError=true;
+    if(!silent)notify('Não foi possível carregar o Kids. A agenda continua disponível.',true);
+    return false;
+  }
+  state.kidsClasses=out[0].data||[];
+  state.kidsChildren=out[1].data||[];
+  state.kidsTerm=(out[2].data||[])[0]||null;
+  state.kidsFamilies=team?(out[3].data||[]):[];
+  state.kidsPermissions=team&&isAdmin()?(out[4]?.data||[]):[];
+  state.kidsLinks=!team?(out[3].data||[]):[];
+  state.kidsRequests=!team?(out[4].data||[]):[];
+  state.kidsError=false;if(!silent)render();
+  return true;
+}
 async function boot() {
   if(!isReady()) {render();return;}
   if (await enforceInactivity()) return;
@@ -494,6 +550,11 @@ async function boot() {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
     await loadData();
+    await loadKids({silent:true});render();
+  } else if(state.user && state.family?.status==='ativo') {
+    const available=tabs().map(x=>x[0]);
+    if(!available.includes(state.tab))state.tab='family';
+    await loadKids({silent:true});render();
   } else render();
 }
 function showError(error) {
