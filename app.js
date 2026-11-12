@@ -347,7 +347,7 @@ function activeUI() {
     case 'perfil':return profileUI();
     case 'escala':return state.agendaError?
       '<h2>Minha Escala</h2><div class="alert">Não foi possível carregar as escalas. Suas outras funções continuam disponíveis.</div><button class="btn ghost" data-a="agenda-refresh">Tentar novamente</button>':
-      isLeader()?leaderAgendaUI({rows:state.schedules,availability:state.availability,people:state.people,labels:FN,esc}):
+      isLeader()?leaderAgendaUI({rows:state.schedules,availability:state.availability,people:state.people,turmas:state.kidsClasses,labels:FN,esc}):
       volunteerAgendaUI({rows:state.schedules.filter(x=>x.pessoa_id===state.user?.id),availability:state.availability.filter(x=>x.pessoa_id===state.user?.id),draftSelection:state.availabilityDraft,selectedDate:state.selectedAvailabilityDate,labels:FN,esc});
     default:return homeUI();
   }
@@ -738,7 +738,16 @@ async function handleForm(form) {
       if(dia<isoLocal(new Date()))throw new Error('Escolha uma data atual ou futura.');
       if(!/^\d{2}:\d{2}$/.test(horario)||turma.length<2||turma.length>80||!Object.keys(FN).includes(funcao))
         throw new Error('Informe horário, turma e função válidos.');
-      const {error}=await sb.from('escalas').upsert({pessoa_id,dia,culto,horario,turma,funcao},{onConflict:'pessoa_id,dia,culto'});
+      // Turma cadastrada: escreve escala e vínculo UUID na MESMA transação SQL.
+      // Sem turma cadastrada, mantém o fluxo legado; não concede acesso infantil.
+      const classObj=state.kidsClasses.find(t=>t.id===turma&&t.ativa);
+      const {error}=classObj
+        ?await sb.rpc('kids_publicar_escala_turma',{
+          p_pessoa:pessoa_id,p_dia:dia,p_culto:culto,p_horario:horario,
+          p_turma:classObj.id,p_funcao:funcao
+        })
+        :await sb.from('escalas').upsert({pessoa_id,dia,culto,horario,turma,funcao},
+           {onConflict:'pessoa_id,dia,culto'});
       if(error)throw new Error('Não foi possível publicar a escala. Confira os dados e as permissões.');
       await loadData();notify('Escala publicada para o voluntário.');
     } else if(id==='invite') {
