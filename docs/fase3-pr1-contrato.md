@@ -73,3 +73,9 @@
 - `docs/fase3-pr1-contrato.md`
 
 **Proteção de rollback:** em homologação, reverter com migration compensatória revisada, removendo primeiro os triggers e restaurando definições anteriores dos helpers, depois as tabelas novas em ordem reversa. Nunca descartar dados reais em produção.
+
+## Nota operacional sobre o histórico de migrações de homologação
+
+As quatro migrações foram executadas no projeto `Teste escala` via ferramenta de SQL, em transações explícitas, para validar e ajustar RLS antes do PR. **Isso não registra versões em `supabase_migrations.schema_migrations`**: consulta de leitura retornou **0/4 versões**. O schema de homologação está alterado e funcional, mas `supabase db push` direto nesse mesmo projeto pode tentar recriar objetos já existentes.
+
+Antes de qualquer automação de banco nesse ambiente, reconciliar versões pelo mecanismo oficial de migration repair (após revisar os nomes/arquivos), ou reconstituir o ambiente de teste com um pipeline limpo. **Não editar a tabela de histórico manualmente e não repetir o SQL diretamente.** A produção não recebeu nenhuma migração.
