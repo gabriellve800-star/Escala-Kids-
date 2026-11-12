@@ -122,6 +122,18 @@ test('Minha Escala: voluntário vê próxima turma e salva disponibilidade do m�
  await page.goto(root);
  await page.locator('form[data-form=login] [name=lu]').fill(volunteer.email);
  await page.locator('form[data-form=login] [name=lp]').fill(volunteer.senha);
+ const beforeSubmit=await page.locator('form[data-form=login]').evaluate(form=>({
+    valid:form.checkValidity(),
+    fields:Array.from(form.querySelectorAll('input')).map(i=>({name:i.name,length:i.value.length,valid:i.validity.valid,required:i.required})),
+    activeName:document.activeElement?.getAttribute('name')||''
+ }));
+ console.log('QA_AGENDA_PRE_SUBMIT',JSON.stringify(beforeSubmit));
+ await page.evaluate(()=>{
+   const form=document.querySelector('form[data-form=login]');
+   window.__qaSubmitDiag={submit:0,invalid:0};
+   form.addEventListener('submit',()=>window.__qaSubmitDiag.submit++,true);
+   form.addEventListener('invalid',()=>window.__qaSubmitDiag.invalid++,true);
+ });
  await page.locator('form[data-form=login] button[type=submit]').click();
  await page.waitForTimeout(1800);
  console.log('QA_AGENDA_LOGIN_EARLY',JSON.stringify({
@@ -129,7 +141,8 @@ test('Minha Escala: voluntário vê próxima turma e salva disponibilidade do m�
    navText:(await page.locator('#nav').allTextContents()).map(x=>x.slice(0,160)),
    text:(await page.locator('#main').innerText()).slice(0,220),
    toasts:(await page.locator('.toast').allTextContents()).map(x=>x.slice(0,110)),
-   authStatuses,pageFailures
+   authStatuses,pageFailures,
+   submitDiag:await page.evaluate(()=>window.__qaSubmitDiag||null)
  }));
  const menu=page.locator('nav button[data-a=tab][data-tab=escala]');
  try {
