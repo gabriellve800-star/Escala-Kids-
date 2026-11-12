@@ -3,7 +3,8 @@
 // Funções de escala, check-in e crianças serão conectadas nas próximas fases.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle';
 import { config } from './config.js';
-import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.4';
+import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.5';
+import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -105,6 +106,7 @@ const state = {
   tab:'inicio', drafts:{}, modal:null, busy:false, toast:'', error:'',
   currentInvitation:null, pendingCount:0, demoTheme:'',
   schedules:[], availability:[], agendaError:false, selectedAvailabilityDate:'',
+  availabilityDraft:null, availabilitySaving:false, availabilitySuccess:false, loadingTab:false,
 };
 let sb;
 let toastTimer;
@@ -136,7 +138,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.4</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.5</small>');
   }
   $('#seg').innerHTML=state.user && canWork()
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -332,7 +334,7 @@ function activeUI() {
     case 'escala':return state.agendaError?
       '<h2>Minha Escala</h2><div class="alert">Não foi possível carregar as escalas. Suas outras funções continuam disponíveis.</div><button class="btn ghost" data-a="agenda-refresh">Tentar novamente</button>':
       isLeader()?leaderAgendaUI({rows:state.schedules,availability:state.availability,people:state.people,labels:FN,esc}):
-      volunteerAgendaUI({rows:state.schedules.filter(x=>x.pessoa_id===state.user?.id),availability:state.availability,selectedDate:state.selectedAvailabilityDate,labels:FN,esc});
+      volunteerAgendaUI({rows:state.schedules.filter(x=>x.pessoa_id===state.user?.id),availability:state.availability.filter(x=>x.pessoa_id===state.user?.id),draftSelection:state.availabilityDraft,selectedDate:state.selectedAvailabilityDate,labels:FN,esc});
     default:return homeUI();
   }
 }
