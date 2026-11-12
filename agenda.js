@@ -91,7 +91,7 @@ export function volunteerAgendaUI({rows=[],availability=[],draftSelection=null,s
        (pending?(checked?'pending ':'pending-remove '):'')+'" data-a="agenda-toggle" data-day="'+select+'" data-culto="'+c+
       '" aria-pressed="'+checked+'" aria-label="'+esc(label+suffix)+'">'+esc(label)+'<span class="agenda-slot-status">'+esc(suffix)+'</span></button>';
    }).join('')+'</div><p class="agenda-hint">Toque para marcar ou desmarcar. Pontos verdes indicam dias disponíveis.</p></div>'+
-   '<p class="agenda-count" data-agenda-count aria-live="polite">'+available.size+' período(s) selecionado(s) para o próximo mês.</p>'+
+   '<p class="agenda-count" data-agenda-count aria-live="polite">'+available.size+(available.size===1?' período selecionado':' períodos selecionados')+' para o próximo mês.</p>'+
    (dayRows.length?'<p class="agenda-hint">Você já tem escala publicada neste dia.</p>':'')+
    '</section>';
 }
