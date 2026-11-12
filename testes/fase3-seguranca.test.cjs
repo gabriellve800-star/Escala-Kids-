@@ -5,10 +5,10 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
-const base=read('supabase/migrations/20261112170000_fase3_kids_base_rls.sql');
-const index=read('supabase/migrations/20261112171000_fase3_fk_indices_private_deny.sql');
-const identity=read('supabase/migrations/20261112172000_fase3_separar_identidades.sql');
-const audit=read('supabase/migrations/20261112173000_fase3_auditoria_acessos_turma.sql');
+const base=read('supabase/migrations/20261112182638_fase3_kids_base_rls.sql');
+const index=read('supabase/migrations/20261112182641_fase3_fk_indices_private_deny.sql');
+const identity=read('supabase/migrations/20261112182648_fase3_separar_identidades.sql');
+const audit=read('supabase/migrations/20261112182651_fase3_auditoria_acessos_turma.sql');
 const sql=read('supabase/tests/fase3_kids_rls_rollback.sql');
 
 test('fase 3: 4 turmas editaveis, identificadores UUID sem texto de escala',()=>{
