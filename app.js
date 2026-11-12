@@ -5,6 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle
 import { config } from './config.js';
 import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.5';
 import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
+import { syncNavigation } from './navigation.js?v=1.2.5';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -151,9 +152,7 @@ function tabs() {
   return [['escala','Minha Escala','cal'],['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
-  $('#nav').innerHTML=tabs().map(([id,name,icon]) =>
-    `<button class="${state.tab===id?'on':''}" data-a="tab" data-tab="${id}" aria-current="${state.tab===id?'page':'false'}">${ico(icon)}${name}</button>`).join('');
-  $('#nav').style.display=tabs().length?'flex':'none';
+  syncNavigation($('#nav'),tabs(),state.tab,ico,esc);
 }
 function authUI() {
   if (!isReady()) return `<h2>Configurar Escala Kids</h2><p class="mut">O aplicativo está preparado, mas ainda não está ligado ao banco de dados. Preencha o arquivo config.js e configure o Supabase conforme o manual da Fase 1.</p>`;
