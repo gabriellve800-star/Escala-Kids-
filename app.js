@@ -347,7 +347,12 @@ function renderModal() {
 }
 function render() {
   renderHeader(); renderNav();
-  $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
+  const main=$('#main'),login=main.querySelector('form[data-form="login"]');
+  // Uma leitura assíncrona da sessão pode provocar outro render enquanto a pessoa
+  // digita. Não substituir os inputs preenchidos: o navegador impediria o submit.
+  const preserveLogin=!state.user && state.auth==='login' && login &&
+    Array.from(login.querySelectorAll('input')).some(input=>input.value.length>0);
+  if (!preserveLogin) main.innerHTML=state.user && canWork()?activeUI():authUI();
   renderToast();renderModal();
   paintInviteQR();
 }
