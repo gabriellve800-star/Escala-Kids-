@@ -144,6 +144,68 @@ update public.turmas_kids set nome='Turma Simulada A Renovada'
 where id='22222222-2222-4222-8222-000000000001';
 
 -- Nenhum registro ficticio permanece; sequencia de numeros nao e revertida.
+
+-- Mesmo um voluntario com permissao delegada NAO le saude bruta.
+do $qa$
+begin
+  begin
+    perform count(*) from private.saude_kids;
+    raise exception 'SAUDE_LIBERADA_INDEVIDAMENTE';
+  exception when insufficient_privilege then null;
+  end;
+end $qa$;
+
+-- Operacoes administrativas sensiveis ficam indisponiveis a voluntario.
+do $qa$
+begin
+  begin
+    insert into public.permissoes_equipe_kids(pessoa_id,permissao,concedida_por)
+    values('11111111-1111-4111-8111-000000000003','consultar_saude',
+           '11111111-1111-4111-8111-000000000004');
+    raise exception 'VOLUNTARIO_CONCEDEU_PERMISSAO';
+  exception when insufficient_privilege then null;
+  end;
+end $qa$;
+
+set local role anon;
+do $qa$
+begin
+  begin
+    perform count(*) from public.turmas_kids;
+    raise exception 'ANON_PODE_LER_TURMAS';
+  exception when insufficient_privilege then null;
+  end;
+end $qa$;
+
+-- Testes de imutabilidade e separacao de identidade executados
+-- pelo papel de fixtures dentro da mesma transacao reversivel.
 reset role;
+do $qa$
+declare id_a text; id_b text;
+begin
+  select numero into id_a from public.criancas_kids
+   where id='33333333-3333-4333-8333-000000000001';
+  select numero into id_b from public.criancas_kids
+   where id='33333333-3333-4333-8333-000000000002';
+  if id_a=id_b or id_a not like 'ANAD-%' or id_b not like 'ANAD-%' then
+    raise exception 'ANAD_GERADO_INVALIDO';
+  end if;
+  begin
+    update public.criancas_kids set numero_interno=700
+     where id='33333333-3333-4333-8333-000000000001';
+    raise exception 'ANAD_EDITAVEL';
+  exception when others then
+    if SQLERRM<>'IDENTIFICADOR_IMUTAVEL' then raise; end if;
+  end;
+  begin
+    insert into public.familias_kids(usuario_id,nome,status,email_confirmado_em)
+    values('11111111-1111-4111-8111-000000000003',
+           'Professor Ficticio Como Familiar','ativo',now());
+    raise exception 'IDENTIDADES_MISTURADAS';
+  exception when others then
+    if SQLERRM<>'IDENTIDADE_SEPARADA_NECESSARIA' then raise;end if;
+  end;
+end $qa$;
+
 rollback;
 select 'FASE3_RLS_NEGATIVE_TESTS_OK' as resultado;
