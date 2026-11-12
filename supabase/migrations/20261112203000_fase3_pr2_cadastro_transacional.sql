@@ -125,7 +125,7 @@ begin
 end $$;
 
 create or replace function public.kids_criar_crianca(
-  p_nome text,p_nascimento date,p_turma uuid,p_versao text default null)
+  p_nome text,p_nascimento date,p_turma uuid,p_versao text default null,p_aceite boolean default false)
 returns table(id uuid,numero text,status text)
 language plpgsql security definer set search_path=''
 as $$
@@ -143,6 +143,7 @@ begin
   if not exists(select 1 from public.turmas_kids t where t.id=p_turma and t.ativa)
     then raise exception 'TURMA_INVALIDA';end if;
   if (select private.familia_ativa()) then
+    if p_aceite is distinct from true then raise exception 'CONSENTIMENTO_OBRIGATORIO';end if;
     origem='familia';est='aguardando_equipe';
   elsif (select private.admin_ativo()) or (select private.lider_ativo())
      or ((select private.tem_permissao_kids('cadastrar_criancas'))
@@ -260,7 +261,7 @@ end $$;
 revoke all on function public.kids_termo_atual(),public.kids_emitir_convite_familia(integer),
  public.kids_convite_familia_valido(text),public.kids_resgatar_convite_familia(text,text),
  public.kids_familias_pendentes(),public.kids_aprovar_familia(uuid),
- public.kids_criar_crianca(text,date,uuid,text),public.kids_vincular_responsavel(uuid,uuid),
+ public.kids_criar_crianca(text,date,uuid,text,boolean),public.kids_vincular_responsavel(uuid,uuid),
  public.kids_confirmar_filho(uuid,text),public.kids_aprovar_crianca(uuid),
  public.kids_pedir_privacidade(text,uuid)
  from public,anon,authenticated;
@@ -268,7 +269,7 @@ grant execute on function public.kids_convite_familia_valido(text) to anon,authe
 grant execute on function public.kids_termo_atual(),
  public.kids_emitir_convite_familia(integer),public.kids_resgatar_convite_familia(text,text),
  public.kids_familias_pendentes(),public.kids_aprovar_familia(uuid),
- public.kids_criar_crianca(text,date,uuid,text),public.kids_vincular_responsavel(uuid,uuid),
+ public.kids_criar_crianca(text,date,uuid,text,boolean),public.kids_vincular_responsavel(uuid,uuid),
  public.kids_confirmar_filho(uuid,text),public.kids_aprovar_crianca(uuid),
  public.kids_pedir_privacidade(text,uuid)
  to authenticated;
