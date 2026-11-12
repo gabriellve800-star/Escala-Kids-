@@ -17,7 +17,7 @@ grant execute on function public.kids_termo_atual() to authenticated;
 
 alter function public.kids_emitir_convite_familia(integer) set schema private;
 create function public.kids_emitir_convite_familia(p_dias integer default 7)
-returns text language sql stable security invoker set search_path=''
+returns text language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_emitir_convite_familia(p_dias);
 $wrapper$;
@@ -35,7 +35,7 @@ grant execute on function public.kids_convite_familia_valido(text) to anon,authe
 
 alter function public.kids_resgatar_convite_familia(text,text) set schema private;
 create function public.kids_resgatar_convite_familia(p_codigo text,p_nome text)
-returns boolean language sql stable security invoker set search_path=''
+returns boolean language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_resgatar_convite_familia(p_codigo,p_nome);
 $wrapper$;
@@ -53,7 +53,7 @@ grant execute on function public.kids_familias_pendentes() to authenticated;
 
 alter function public.kids_aprovar_familia(uuid) set schema private;
 create function public.kids_aprovar_familia(p_responsavel uuid)
-returns boolean language sql stable security invoker set search_path=''
+returns boolean language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_aprovar_familia(p_responsavel);
 $wrapper$;
@@ -62,7 +62,7 @@ grant execute on function public.kids_aprovar_familia(uuid) to authenticated;
 
 alter function public.kids_criar_crianca(text,date,uuid,text,boolean) set schema private;
 create function public.kids_criar_crianca(p_nome text,p_nascimento date,p_turma uuid,p_versao text default null,p_aceite boolean default false)
-returns table(id uuid,numero text,status text) language sql stable security invoker set search_path=''
+returns table(id uuid,numero text,status text) language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT * FROM private.kids_criar_crianca(p_nome,p_nascimento,p_turma,p_versao,p_aceite);
 $wrapper$;
@@ -71,7 +71,7 @@ grant execute on function public.kids_criar_crianca(text,date,uuid,text,boolean)
 
 alter function public.kids_vincular_responsavel(uuid,uuid) set schema private;
 create function public.kids_vincular_responsavel(p_crianca uuid,p_responsavel uuid)
-returns boolean language sql stable security invoker set search_path=''
+returns boolean language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_vincular_responsavel(p_crianca,p_responsavel);
 $wrapper$;
@@ -80,7 +80,7 @@ grant execute on function public.kids_vincular_responsavel(uuid,uuid) to authent
 
 alter function public.kids_confirmar_filho(uuid,text) set schema private;
 create function public.kids_confirmar_filho(p_crianca uuid,p_versao text)
-returns boolean language sql stable security invoker set search_path=''
+returns boolean language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_confirmar_filho(p_crianca,p_versao);
 $wrapper$;
@@ -89,7 +89,7 @@ grant execute on function public.kids_confirmar_filho(uuid,text) to authenticate
 
 alter function public.kids_aprovar_crianca(uuid) set schema private;
 create function public.kids_aprovar_crianca(p_crianca uuid)
-returns boolean language sql stable security invoker set search_path=''
+returns boolean language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_aprovar_crianca(p_crianca);
 $wrapper$;
@@ -98,7 +98,7 @@ grant execute on function public.kids_aprovar_crianca(uuid) to authenticated;
 
 alter function public.kids_pedir_privacidade(text,uuid) set schema private;
 create function public.kids_pedir_privacidade(p_tipo text,p_crianca uuid default null)
-returns boolean language sql stable security invoker set search_path=''
+returns boolean language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_pedir_privacidade(p_tipo,p_crianca);
 $wrapper$;
@@ -107,7 +107,7 @@ grant execute on function public.kids_pedir_privacidade(text,uuid) to authentica
 
 alter function public.kids_publicar_escala_turma(uuid,date,text,time,uuid,text) set schema private;
 create function public.kids_publicar_escala_turma(p_pessoa uuid,p_dia date,p_culto text,p_horario time,p_turma uuid,p_funcao text)
-returns uuid language sql stable security invoker set search_path=''
+returns uuid language sql volatile security invoker set search_path=''
 as $wrapper$
   SELECT private.kids_publicar_escala_turma(p_pessoa,p_dia,p_culto,p_horario,p_turma,p_funcao);
 $wrapper$;
