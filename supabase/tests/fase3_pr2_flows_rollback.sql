@@ -79,13 +79,20 @@ begin
   val=public.kids_aprovar_familia('88888888-8888-4888-8888-000000000003');
   -- Familia A cria filho, ainda aguardando equipe.
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000002',true);
+  begin
+    perform * from public.kids_criar_crianca('Crianca Sem Aceite','2021-01-01',
+      '99999999-9999-4999-8999-000000000001','QA_PR2_DEMO');
+    raise exception 'ERRO: consentimento omitido aceito';
+  exception when others then
+    if SQLERRM<>'CONSENTIMENTO_OBRIGATORIO' then raise; end if;
+  end;
   select id into kid_a from public.kids_criar_crianca('Crianca Ficticia A','2021-01-01',
-    '99999999-9999-4999-8999-000000000001','QA_PR2_DEMO');
+    '99999999-9999-4999-8999-000000000001','QA_PR2_DEMO',true);
   if kid_a is null then raise exception 'ERRO: criacao A';end if;
   -- Familia B cria outro filho.
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000003',true);
   select id into kid_b from public.kids_criar_crianca('Crianca Ficticia B','2020-01-01',
-    '99999999-9999-4999-8999-000000000002','QA_PR2_DEMO');
+    '99999999-9999-4999-8999-000000000002','QA_PR2_DEMO',true);
   select count(*) into n from public.criancas_kids where id=kid_a;
   if n<>0 then raise exception 'ERRO: familia B ve crianca A';end if;
   -- Admin aprova ambos, com consentimento ficticio cadastrado.
