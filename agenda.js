@@ -95,7 +95,7 @@ export function volunteerAgendaUI({rows=[],availability=[],draftSelection=null,s
    (dayRows.length?'<p class="agenda-hint">Você já tem escala publicada neste dia.</p>':'')+
    '</section>';
 }
-export function leaderAgendaUI({rows=[],availability=[],people=[],labels={},esc}){
+export function leaderAgendaUI({rows=[],availability=[],people=[],turmas=[],labels={},esc}){
   const candidates=people.filter(p=>p.status==='ativo'&&!p.primeiro_acesso);
   const today=isoLocal(new Date());
   const future=sortedShifts(rows.filter(x=>x.dia>=today)).slice(0,35);
@@ -111,8 +111,12 @@ export function leaderAgendaUI({rows=[],availability=[],people=[],labels={},esc}
    '<div class="field"><label for="agenda-time">Horário</label><input class="in" id="agenda-time" name="agenda-time" type="time" required></div></div>'+
    '<div class="field"><label for="agenda-culto">Culto</label><select class="in" id="agenda-culto" name="agenda-culto">'+
      Object.entries(CULTOS).map(([k,v])=>'<option value="'+k+'">'+esc(v)+'</option>').join('')+'</select></div>'+
-   '<div class="fieldgrid"><div class="field"><label for="agenda-turma">Turma</label><input class="in" id="agenda-turma" name="agenda-turma" type="text" minlength="2" maxlength="80" list="agenda-turmas" placeholder="Ex.: Maternal" required><datalist id="agenda-turmas">'+
-     TURMAS_SUGERIDAS.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></div>'+
+   '<div class="fieldgrid"><div class="field"><label for="agenda-turma">Turma</label>'+
+     (turmas.some(t=>t.ativa)
+       ?'<select class="in" id="agenda-turma" name="agenda-turma" required><option value="">Selecione a turma oficial</option>'+
+         turmas.filter(t=>t.ativa).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.nome)+'</option>').join('')+'</select>'
+       :'<input class="in" id="agenda-turma" name="agenda-turma" type="text" minlength="2" maxlength="80" list="agenda-turmas" placeholder="Configure as turmas no Kids" required><datalist id="agenda-turmas">'+
+         TURMAS_SUGERIDAS.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>')+'</div>'+
    '<div class="field"><label for="agenda-funcao">Função</label><select class="in" id="agenda-funcao" name="agenda-funcao">'+
      Object.entries(labels).filter(([id])=>['professor','auxiliar','lanche','portaria'].includes(id)).map(([id,label])=>'<option value="'+esc(id)+'">'+esc(label)+'</option>').join('')+'</select></div></div>'+
    '<button class="btn pri" type="submit">Publicar escala</button></form></section>'+
