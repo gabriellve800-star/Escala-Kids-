@@ -238,3 +238,19 @@ button:disabled {opacity:.56;cursor:not-allowed}
   .skeleton,.agenda-draftbar,.btn[aria-busy="true"]::after{animation:none!important}
   ::view-transition-old(ek-main),::view-transition-new(ek-main){animation:none!important}
 }
+
+/* Alvos reais de toque >=44px, incluindo controles herdados da Fase 1. */
+.chip,.seg button,.pwa-update-btn{min-height:44px}
+.tog,.tog.on{
+  width:60px;height:44px;min-height:44px;background:transparent;border-radius:999px
+}
+.tog::before{
+  content:"";position:absolute;left:4px;right:4px;top:7px;height:30px;
+  background:var(--line);border-radius:999px;transition:background .2s
+}
+.tog.on::before{background:var(--pri)}
+.tog::after{left:7px;top:10px}
+.tog.on::after{transform:translateX(22px)}
+.alert{background:var(--rose);color:var(--roseink);border:1px solid var(--line);
+  border-radius:18px;padding:13px 15px;margin:12px 0;font-size:14px}
+@media(prefers-reduced-motion:reduce){.tog::before{transition:none!important}}
