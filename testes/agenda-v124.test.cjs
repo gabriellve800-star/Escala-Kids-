@@ -56,3 +56,10 @@ test('RLS: apenas gestor ativo publica escala; cadastro antigo intacto',()=>{
  assert.match(js,/id==='signup'/);
  assert.match(js,/id==='invite'/);
 });
+
+test('primeira instalação do PWA não recarrega o login; atualização só com consentimento',()=>{
+ assert.match(js,/let userAcceptedUpdate = false/);
+ assert.match(js,/if \(refreshing \|\| !userAcceptedUpdate\) return/);
+ assert.match(js,/userAcceptedUpdate = true/);
+ assert.match(js,/registration\.waiting\?\.postMessage\(\{ type: 'SKIP_WAITING' \}\)/);
+});
