@@ -636,18 +636,38 @@ async function actionClick(b) {
     state.selectedAvailabilityDate=b.dataset.day;render();return;
   }
   if(a==='agenda-toggle'){
-    if(!canWork()||state.busy||!validSlot(b.dataset.day,b.dataset.culto))return;
-    if(b.dataset.day<firstMonth(1)||b.dataset.day>=firstMonth(2)){notify('A disponibilidade só pode ser informada para o próximo mês.',true);return;}
-    const payload={pessoa_id:state.user.id,dia:b.dataset.day,culto:b.dataset.culto};
-    const has=state.availability.some(x=>x.pessoa_id===payload.pessoa_id&&x.dia===payload.dia&&x.culto===payload.culto);
-    state.busy=true;b.disabled=true;
-    try{
-      const result=has?await sb.from('disponibilidades').delete().match(payload):
-        await sb.from('disponibilidades').insert(payload);
-      if(result.error)throw new Error('Não foi possível salvar a disponibilidade.');
-      await loadData();
-      notify(has?'Disponibilidade retirada.':'Disponibilidade registrada!');
-    }catch(e){notify(showError(e),true);}finally{state.busy=false;b.disabled=false;}
+    if(!canWork()||isLeader()||state.busy||state.availabilitySaving||!validSlot(b.dataset.day,b.dataset.culto))return;
+    if(b.dataset.day<firstMonth(1)||b.dataset.day>=firstMonth(2)){
+      notify('Só é possível escolher períodos do próximo mês.',true);return;
+    }
+    state.availabilitySuccess=false;
+    state.availabilityDraft=toggleSelection(availabilityBase(),state.availabilityDraft,
+      b.dataset.day+'|'+b.dataset.culto);
+    paintDraftSelection();
+    return;
+  }
+  if(a==='agenda-cancel'){
+    if(state.availabilitySaving)return;
+    state.availabilityDraft=null;state.availabilitySuccess=false;
+    paintDraftSelection();return;
+  }
+  if(a==='agenda-save'){
+    if(state.availabilitySaving||!availabilityDirty()||!canWork()||isLeader())return;
+    state.availabilitySaving=true;renderAvailabilityBar();
+    const result=await saveAvailability({
+      sb,userId:state.user.id,base:availabilityBase(),draft:state.availabilityDraft,
+      validEntry:({dia,culto})=>dia>=firstMonth(1)&&dia<firstMonth(2)&&validSlot(dia,culto),
+    });
+    // Recarrega sempre, também após tentativa de rollback; mantém rascunho em erro.
+    if(result.ok)state.availabilityDraft=null;
+    await loadData();
+    state.availabilitySaving=false;
+    if(result.ok){
+      state.availabilitySuccess=true;renderAvailabilityBar();
+      setTimeout(()=>{state.availabilitySuccess=false;renderAvailabilityBar();},1800);
+    }else{
+      renderAvailabilityBar();notify(result.message,true);
+    }
     return;
   }
   if(a==='agenda-remove'){
