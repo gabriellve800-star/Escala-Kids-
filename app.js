@@ -683,7 +683,7 @@ async function handleForm(form) {
       await loadKids({silent:true});
       notify('Vínculo encaminhado para confirmação do responsável.');
     } else if(id==='family-privacy-request') {
-      if(state.family?.status!=='ativo')throw new Error('Sem acesso familiar.');
+      if(!state.family?.usuario_id)throw new Error('Sem acesso familiar.');
       const type=val('pr-kind'),child=val('pr-child')||null;
       if(!['acesso','correcao','revogacao','exclusao'].includes(type))
         throw new Error('Solicitação inválida.');
