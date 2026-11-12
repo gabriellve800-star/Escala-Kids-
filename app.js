@@ -372,8 +372,9 @@ function renderAvailabilityBar() {
   }
   bar.className='agenda-draftbar';
   const total=state.availabilityDraft.size;
-  bar.innerHTML='<div class="agenda-draftbar-title" aria-live="polite"><strong>'+total+
-    ' período(s) selecionado(s)</strong><small>Alterações ainda não enviadas</small></div>'+
+  const periodText=total===1?'1 período selecionado':total+' períodos selecionados';
+  bar.innerHTML='<div class="agenda-draftbar-title" aria-live="polite"><strong>'+periodText+
+    '</strong><small>Alterações ainda não enviadas</small></div>'+
     '<div class="agenda-draftbar-buttons"><button class="btn ghost" type="button" data-a="agenda-cancel" '+
     (state.availabilitySaving?'disabled':'')+'>Cancelar</button>'+
     '<button class="btn pri" type="button" data-a="agenda-save" '+
@@ -414,7 +415,7 @@ function paintDraftSelection(){
     btn.setAttribute('aria-label',day+', '+opts.filter(c=>selected.has(day+'|'+c)).length+' períodos selecionados');
   });
   const count=$('[data-agenda-count]');
-  if(count)count.textContent=selected.size+' período(s) selecionado(s) para o próximo mês.';
+  if(count)count.textContent=selected.size+(selected.size===1?' período selecionado':' períodos selecionados')+' para o próximo mês.';
   renderAvailabilityBar();
 }
 
@@ -729,6 +730,7 @@ async function actionClick(b) {
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
   if(a==='out'){
+    if(state.availabilitySaving){notify('Conclua o envio antes de sair.',true);return;}
     if(availabilityDirty()){
       modal('Rascunho não enviado','Sair da conta e descartar estas alterações?','discard-draft-out');return;
     }
