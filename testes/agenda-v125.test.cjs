@@ -127,7 +127,7 @@ test('PWA atualiza assets sem cachear APIs e preserva atualização consentida',
   const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
   for(const filename of ['availability-draft.js','navigation.js','agenda.js','app.js'])
-    assert.ok(sw.includes(filename+'?v='+(filename==='agenda.js'?'1.2.6':'1.2.5')));
+    assert.ok(sw.includes(filename+'?v='+(['agenda.js','app.js'].includes(filename)?'1.2.6':'1.2.5')));
   assert.match(sw,/url\.origin !== self\.location\.origin/);
   assert.match(sw,/allowed\.has\(url\.href\)/);
   assert.match(app,/let userAcceptedUpdate = false/);
