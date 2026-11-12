@@ -654,7 +654,8 @@ async function handleForm(form) {
       if(id==='kids-child-family'&&!form.querySelector('[name="kid-accept"]')?.checked)
         throw new Error('É necessário ler e aceitar o termo.');
       const {data,error}=await sb.rpc('kids_criar_crianca',{
-        p_nome:name,p_nascimento:dob,p_turma:classId,p_versao:state.kidsTerm.versao
+        p_nome:name,p_nascimento:dob,p_turma:classId,p_versao:state.kidsTerm.versao,
+        p_aceite:id==='kids-child-family'
       });
       if(error||!Array.isArray(data)||data.length!==1)
         throw new Error('Não foi possível registrar a ficha. Verifique a autorização.');
