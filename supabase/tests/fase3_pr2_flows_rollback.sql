@@ -21,7 +21,7 @@ set local role authenticated;
 set local request.jwt.claim.sub='88888888-8888-4888-8888-000000000001';
 
 do $test$
-declare code_a text; code_b text; kid_a uuid; kid_b uuid; kid_team uuid; n bigint; val boolean;
+declare code_a text; code_b text; kid_a uuid; kid_b uuid; kid_team uuid; n bigint; val boolean; escalado uuid;
 begin
   -- Termo ausente: bloqueia criacao infantil, ate para o administrador.
   begin
@@ -77,6 +77,14 @@ begin
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000001',true);
   val=public.kids_aprovar_familia('88888888-8888-4888-8888-000000000002');
   val=public.kids_aprovar_familia('88888888-8888-4888-8888-000000000003');
+  -- A escala da turma é escrita atomicamente, mesmo sem conceder acesso infantil fora do dia.
+  escalado=public.kids_publicar_escala_turma(
+    '88888888-8888-4888-8888-000000000004',
+    (date_trunc('week',(now() at time zone 'America/Sao_Paulo'))::date+13),
+    'domingo_manha','09:00','99999999-9999-4999-8999-000000000001','professor');
+  if not exists(select 1 from public.escalas_turmas_kids
+      where escala_id=escalado and turma_id='99999999-9999-4999-8999-000000000001')
+    then raise exception 'ERRO: escala sem mapeamento UUID';end if;
   -- Familia A cria filho, ainda aguardando equipe.
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000002',true);
   begin
@@ -117,6 +125,15 @@ begin
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000004',true);
   select count(*) into n from public.criancas_kids;
   if n<>0 then raise exception 'ERRO: voluntario le fichas';end if;
+  begin
+    perform public.kids_publicar_escala_turma(
+      '88888888-8888-4888-8888-000000000004',
+      (date_trunc('week',(now() at time zone 'America/Sao_Paulo'))::date+13),
+      'domingo_manha','09:00','99999999-9999-4999-8999-000000000002','professor');
+    raise exception 'ERRO: voluntario publicou escala';
+  exception when others then
+    if SQLERRM<>'SEM_PERMISSAO' then raise;end if;
+  end;
   if has_table_privilege('authenticated','private.saude_kids','SELECT')
     then raise exception 'ERRO: grant em saude';end if;
 end $test$;
