@@ -33,8 +33,8 @@ async function users(){
 }
 async function counts(){
  const o={auth:(await users()).length};
- for(const t of ['perfis','convites','auditoria','funcoes_pessoa']){
-  const col=t==='funcoes_pessoa'?'pessoa_id':'id';
+ for(const t of ['perfis','convites','auditoria','funcoes_pessoa','escalas','disponibilidades']){
+  const col=['funcoes_pessoa','disponibilidades','escalas'].includes(t)?'pessoa_id':'id';
   const {count,error}=await admin.from(t).select(col,{count:'exact',head:true});
   check(error,'count '+t);o[t]=count;
  }
@@ -252,6 +252,8 @@ async function cleanup(){
   check((await admin.from('auditoria').delete().in('quem',ids)).error,'delete audit actor');
   check((await admin.from('auditoria').delete().in('alvo',ids)).error,'delete audit target');
   check((await admin.from('funcoes_pessoa').delete().in('pessoa_id',ids)).error,'delete user functions');
+  check((await admin.from('escalas').delete().in('pessoa_id',ids)).error,'delete ONLY test schedules');
+  check((await admin.from('disponibilidades').delete().in('pessoa_id',ids)).error,'delete ONLY test availability');
  }
  if(inviteIds.length)check((await admin.from('convites').delete().in('id',inviteIds)).error,'delete ONLY invitation ids');
  if(ids.length)check((await admin.from('perfis').delete().in('id',ids)).error,'delete ONLY profile ids');
@@ -259,8 +261,8 @@ async function cleanup(){
  assert.equal((await users()).filter(u=>expected.has(u.email)).length,0,'Auth de identidades criadas residual');
  const unknown=(await users()).filter(u=>u.email?.startsWith(s.prefix+'_')&&!expected.has(u.email));
  assert.equal(unknown.length,0,'Encontradas identidades não previstas; NÃO excluí-las automaticamente');
- for(const t of ['perfis','convites','auditoria','funcoes_pessoa']){
-  const col=t==='funcoes_pessoa'?'pessoa_id':'id';
+ for(const t of ['perfis','convites','auditoria','funcoes_pessoa','escalas','disponibilidades']){
+  const col=['funcoes_pessoa','escalas','disponibilidades'].includes(t)?'pessoa_id':'id';
   if(!ids.length && !inviteIds.length)continue;
   if(t==='convites'){if(inviteIds.length){const x=await admin.from(t).select('id').in('id',inviteIds);check(x.error,'verify invites');assert.equal(x.data.length,0)}}
   else if(t==='auditoria'){
