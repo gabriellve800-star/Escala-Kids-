@@ -47,6 +47,25 @@ begin
 end $qa$;
 
 select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-000000000011',true);
+-- Admin delega apenas MONTAR, sem aprovar; a permissão nunca abre crianças.
+insert into public.permissoes_equipe_kids(pessoa_id,permissao,concedida_por)
+values('44444444-4444-4444-8444-000000000013','montar_escalas',
+       '44444444-4444-4444-8444-000000000011');
+select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-000000000013',true);
+do $qa$
+declare mes date;
+begin
+ mes=date_trunc('month',(now() at time zone 'America/Sao_Paulo')+interval '1 month')::date;
+ if not private.kids_pode_planejar() or private.kids_pode_aprovar_escala()
+   then raise exception 'FALHA: delegação montagem virou aprovação';end if;
+ if jsonb_array_length(public.kids_planejamento_base(mes)->'equipe')<>13
+   then raise exception 'FALHA: base delegada não carregou';end if;
+ begin
+  perform public.kids_aprovar_sugestao(mes,1);
+  raise exception 'FALHA: delegado aprovou escala';
+ exception when others then if SQLERRM<>'SEM_PERMISSAO' then raise;end if;end;
+end $qa$;
+select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-000000000011',true);
 do $qa$
 declare mes date;itens jsonb;vers integer;quantidade int;src jsonb;
 begin
@@ -82,6 +101,12 @@ begin
  )) into itens from necessidades n;
  vers=public.kids_salvar_sugestao(mes,itens);
  if vers<>1 then raise exception 'FALHA: versão inicial';end if;
+ begin
+   perform public.kids_salvar_sugestao(mes,itens,999);
+   raise exception 'FALHA: atualização de versão obsoleta';
+ exception when others then
+   if SQLERRM<>'RASCUNHO_DESATUALIZADO_OU_APROVADO' then raise;end if;
+ end;
  quantidade=public.kids_aprovar_sugestao(mes,vers);
  if quantidade<>jsonb_array_length(itens) then raise exception 'FALHA: publicação não atômica';end if;
  if (select count(*) from public.escalas e
