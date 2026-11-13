@@ -56,7 +56,8 @@ do $qa$
 declare mes date;
 begin
  mes=date_trunc('month',(now() at time zone 'America/Sao_Paulo')+interval '1 month')::date;
- if not private.kids_pode_planejar() or private.kids_pode_aprovar_escala()
+ if (public.kids_planejamento_base(mes)->>'pode_editar')::boolean is distinct from true
+    or (public.kids_planejamento_base(mes)->>'pode_aprovar')::boolean is distinct from false
    then raise exception 'FALHA: delegação montagem virou aprovação';end if;
  if jsonb_array_length(public.kids_planejamento_base(mes)->'equipe')<>13
    then raise exception 'FALHA: base delegada não carregou';end if;
