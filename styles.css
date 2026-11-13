@@ -254,3 +254,32 @@ button:disabled {opacity:.56;cursor:not-allowed}
 .alert{background:var(--rose);color:var(--roseink);border:1px solid var(--line);
   border-radius:18px;padding:13px 15px;margin:12px 0;font-size:14px}
 @media(prefers-reduced-motion:reduce){.tog::before{transition:none!important}}
+
+/* Fase 3 PR2 — amplia a linguagem visual existente, sem novas cores ou fontes. */
+.kids-heading{margin:5px 0 16px}.kids-back{width:auto;font-size:13px;padding:9px 16px;margin-bottom:12px}
+.kids-section{margin:24px 0 12px;font-size:20px}
+.kids-form{display:grid;gap:12px;margin-top:12px}
+.kids-form>label,.kids-two label{display:grid;gap:6px;font:600 13px/1.45 var(--bd);color:var(--ink)}
+.kids-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.kids-form .in{width:100%;min-width:0}
+.kids-term{border-left:4px solid var(--pri)}
+.kids-term summary{font-weight:700;cursor:pointer;min-height:44px;display:flex;align-items:center}
+.kids-term-text{margin:10px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);font-size:14px;line-height:1.65;max-height:240px;overflow-y:auto}
+.kids-lock{background:var(--rose);border-color:var(--rose)}.kids-lock h3{color:var(--roseink)}
+.kids-lock p{color:var(--roseink);margin-top:8px}
+.kids-family-hero{background:var(--pri);margin-top:6px}
+.kids-family-hero h2{color:var(--on);margin:10px 0;font-size:25px}
+.kids-perms{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.kids-perms h4{font:700 15px var(--hd);margin:0 0 7px}
+.kids-perms .pillset{margin:10px 0;display:flex;flex-wrap:wrap;gap:7px}
+.kids-perms .chip{white-space:normal;max-width:100%;font-size:12px;min-height:44px}
+.kids-consent{display:flex!important;flex-direction:row;gap:10px!important;align-items:flex-start;line-height:1.5}
+.kids-consent input{width:20px;height:20px;flex:none;accent-color:var(--pri);margin-top:1px}
+.kids-invite{padding:14px;background:var(--mint);border-radius:16px;margin-top:12px;color:var(--mintink)}
+.kids-invite p{color:var(--mintink)}
+.kids-invite code{display:block;overflow-wrap:anywhere;user-select:all;font:700 12px/1.65 ui-monospace,monospace;padding:12px 0}
+.kids-invite .btn{font-size:13px}
+.kids-footnote{border:1px solid var(--line)}
+.kids-footnote p{margin-top:8px}
+@media(max-width:350px){.kids-two{grid-template-columns:1fr}.kids-section{font-size:18px}}
+@media(prefers-reduced-motion:reduce){.kids-term summary,.kids-perms button{transition:none}}

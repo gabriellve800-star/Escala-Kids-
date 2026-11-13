@@ -3,9 +3,10 @@
 // Funções de escala, check-in e crianças serão conectadas nas próximas fases.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle';
 import { config } from './config.js';
-import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.5';
+import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.6';
 import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
 import { syncNavigation } from './navigation.js?v=1.2.5';
+import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.6';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -93,7 +94,7 @@ async function enforceInactivity() {
   try { await sb.auth.signOut({ scope: 'local' }); }
   catch { /* tentar sair mesmo que a rede esteja indisponível */ }
   forgetHumanActivity();
-  state.user=null; state.profile=null; state.auth='login';
+  state.user=null; state.profile=null; clearPrivateKidsState(); state.auth='login';
   render(); notify('Sua sessão expirou após 14 dias sem abrir o aplicativo.', true);
   return true;
 }
@@ -108,6 +109,8 @@ const state = {
   currentInvitation:null, pendingCount:0, demoTheme:'',
   schedules:[], availability:[], agendaError:false, selectedAvailabilityDate:'',
   availabilityDraft:null, availabilitySaving:false, availabilitySuccess:false, loadingTab:false,
+  family:null, kidsClasses:[], kidsChildren:[], kidsLinks:[], kidsFamilies:[],
+  kidsPermissions:[], kidsRequests:[], kidsTerm:null, kidsInviteCode:'', kidsError:false,
 };
 let sb;
 let toastTimer;
@@ -119,7 +122,7 @@ const isAdmin = () => state.profile?.perfil === 'administrador';
 const canApprove = () => isAdmin() || (state.profile?.perfil === 'lider' && state.profile?.pode_aprovar);
 const isLeader = () => isAdmin() || state.profile?.perfil === 'lider';
 const canWork = () => state.profile?.status === 'ativo' && !state.profile.primeiro_acesso;
-const first = () => state.profile?.nome?.split(' ')[0] || 'Olá';
+const first = () => (state.profile?.nome||state.family?.nome||'Olá').split(' ')[0];
 
 function field(id, label, type='text', extra='') {
   return `<div class="field"><label for="${id}">${esc(label)}</label><input class="in" id="${id}" name="${id}" type="${esc(type)}" ${extra}></div>`;
@@ -139,17 +142,19 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.5</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.6</small>');
   }
-  $('#seg').innerHTML=state.user && canWork()
+  $('#seg').innerHTML=state.user && (canWork()||state.family?.status==='ativo')
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
 }
 function tabs() {
-  if (!state.user || !canWork()) return [];
-  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
-  if (isLeader()) return [['escala','Escala','cal'],['equipe','Equipe','users'],
+  if (!state.user) return [];
+  if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
+  if (!canWork()) return [];
+  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
+  if (isLeader()) return [['escala','Escala','cal'],['kids','Kids','users'],['equipe','Equipe','users'],
     ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
-  return [['escala','Minha Escala','cal'],['inicio','Início','home'],['perfil','Perfil','user']];
+  return [['escala','Minha Escala','cal'],...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
   syncNavigation($('#nav'),tabs(),state.tab,ico,esc);
@@ -186,7 +191,7 @@ function authUI() {
   return `<div class="hero" style="margin-top:14px"><h2 style="margin:0 0 8px">Bem-vindo ao Escala Kids</h2><p>Entre para ver sua escala e cuidar dos pequenos.</p></div>
     <form data-form="login">${field('lu','Usuário ou e-mail','text','autocomplete="username" required')}${field('lp','Senha','password','autocomplete="current-password" required')}
       <div style="height:10px"></div><button class="btn pri" type="submit" ${state.busy?'disabled':''}>Entrar</button></form>
-    <div style="height:8px"></div><button class="btn ghost" data-a="signup">Tenho um convite</button>`;
+    <div style="height:8px"></div><button class="btn ghost" data-a="signup">Tenho um convite</button><div style="height:8px"></div><button class="btn ghost" data-a="family-access">Sou responsável</button>`;
 }
 function functionsOf(id) { return state.functions.filter(x=>x.pessoa_id===id).map(x=>x.funcao); }
 function draftOf(person) {
@@ -220,7 +225,7 @@ function approvalsUI() {
 }
 function peopleUI() {
   if (!isAdmin()) return `<h2>Sem permissão</h2>`;
-  let h=`<h2>Pessoas</h2><p class="mut">Perfis e permissões. Só o administrador altera isto.</p><div style="height:12px"></div>`;
+  let h=`<h2>Pessoas</h2><p class="mut">Perfis e permissões. Só o administrador altera isto.</p><button class="btn ghost" data-a="kids-open" style="margin:12px 0">Gerenciar Kids e turmas</button><div style="height:12px"></div>`;
   const people=state.people.filter(p=>p.status==='ativo'||p.status==='desativado');
   if (!people.length) return h+'<div class="card">Nenhuma pessoa cadastrada.</div>';
   for (const p of people) {
@@ -229,6 +234,7 @@ function peopleUI() {
       ${roleChip(p,true)}${functionChips(p)}
       ${d.perfil==='lider'?`<div class="row" style="border:0"><span class="mini">Pode aprovar cadastros</span><button class="tog ${d.pode_aprovar?'on':''}" data-a="ap" data-id="${p.id}" role="switch" aria-checked="${d.pode_aprovar}" aria-label="Pode aprovar: ${esc(p.nome)}"></button></div>`:''}
       ${p.id!==state.user.id?`<div class="row" style="border:0"><span class="mini">Conta ${d.status==='ativo'?'ativa':'desativada'}</span><button class="chip ${d.status==='ativo'?'on':''}" data-a="status" data-id="${p.id}">${d.status==='ativo'?'Desativar':'Reativar'}</button></div>`:''}
+      ${p.status==='ativo' && p.id!==state.user?.id ? kidsPermissionChips(p.id,state.kidsPermissions.filter(x=>x.pessoa_id===p.id).map(x=>x.permissao),esc) : ''}
       <button class="btn pri" style="margin-top:12px" data-a="saveperson" data-id="${p.id}">Salvar alterações</button></div>`;
   }
   return h;
@@ -318,7 +324,7 @@ function profileUI() {
 function waitingUI(title, description) {return `<h2>${esc(title)}</h2><p class="mut">${esc(description)}</p><div class="card" style="margin-top:16px"><h3>Próxima etapa</h3><p class="mut" style="margin-top:6px">Seu acesso já está protegido. Este recurso será conectado ao banco na próxima fase.</p></div>`;}
 function teamUI() {
   const people=state.people.filter(p=>p.status==='ativo');
-  let h='<h2>Equipe</h2><p class="mut">Pessoas do ministério. Os indicadores de cuidado entram com as escalas reais na fase 2.</p><div style="height:12px"></div>';
+  let h='<h2>Equipe</h2><p class="mut">Pessoas do ministério.</p><button class="btn ghost" data-a="kids-open" style="margin:12px 0">Abrir Kids e turmas</button><div style="height:12px"></div>';
   for(const p of people) h+=`<div class="card"><div class="row" style="border:0;padding:0"><div><span class="who">${esc(p.nome)}</span><br><span class="mut">${esc(functionsOf(p.id).map(f=>FN[f]).join(', ')||'Funções a definir')}</span></div><span class="tag">${esc(PF[p.perfil])}</span></div></div>`;
   return h;
 }
@@ -327,6 +333,12 @@ function activeUI() {
     '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-card"></div>'+
     '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>';
   switch(state.tab) {
+    case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
+      kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
+         families:state.kidsFamilies,term:state.kidsTerm,esc,
+         canManageClasses:isAdmin()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
+         canRegisterChild:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='cadastrar_criancas'),
+         canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode});
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
     case 'convites':return invitesUI();
@@ -335,7 +347,7 @@ function activeUI() {
     case 'perfil':return profileUI();
     case 'escala':return state.agendaError?
       '<h2>Minha Escala</h2><div class="alert">Não foi possível carregar as escalas. Suas outras funções continuam disponíveis.</div><button class="btn ghost" data-a="agenda-refresh">Tentar novamente</button>':
-      isLeader()?leaderAgendaUI({rows:state.schedules,availability:state.availability,people:state.people,labels:FN,esc}):
+      isLeader()?leaderAgendaUI({rows:state.schedules,availability:state.availability,people:state.people,turmas:state.kidsClasses,labels:FN,esc}):
       volunteerAgendaUI({rows:state.schedules.filter(x=>x.pessoa_id===state.user?.id),availability:state.availability.filter(x=>x.pessoa_id===state.user?.id),draftSelection:state.availabilityDraft,selectedDate:state.selectedAvailabilityDate,labels:FN,esc});
     default:return homeUI();
   }
@@ -438,18 +450,40 @@ function renderScreenTransition() {
 }
 function render() {
   renderHeader(); renderNav();
-  $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
+  if (state.user && state.family?.status==='ativo') {
+    $('#main').innerHTML=familyPortalUI({family:state.family,classes:state.kidsClasses,children:state.kidsChildren,
+      links:state.kidsLinks,requests:state.kidsRequests,term:state.kidsTerm,esc,tab:state.tab});
+  } else if(state.user && !state.profile) {
+    $('#main').innerHTML=familyAccessUI({family:state.family,auth:state.family?'family-wait':'family-redeem',term:state.kidsTerm,esc});
+  } else if(!state.user && ['family-login','family-signup','family-email-wait'].includes(state.auth)){
+    $('#main').innerHTML=familyAccessUI({family:null,auth:state.auth,term:state.kidsTerm,esc});
+  } else $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
   renderAvailabilityBar();
   renderToast();renderModal();
   paintInviteQR();
 }
+function clearPrivateKidsState() {
+  state.family=null;state.kidsChildren=[];state.kidsLinks=[];
+  state.kidsFamilies=[];state.kidsRequests=[];state.kidsPermissions=[];
+  state.kidsTerm=null;state.kidsClasses=[];state.kidsInviteCode='';state.kidsError=false;
+}
 async function readProfile() {
   const {data:u,error:e}=await sb.auth.getUser();
-  if(e || !u?.user){state.user=null;state.profile=null;return;}
+  if(e || !u?.user){state.user=null;state.profile=null;clearPrivateKidsState();return;}
+  if(state.user?.id && state.user.id!==u.user.id){
+    clearPrivateKidsState();state.profile=null;state.people=[];state.functions=[];state.invites=[];
+    state.schedules=[];state.availability=[];state.drafts={};
+  }
   state.user=u.user;
   const {data:p,error:pe}=await sb.from('perfis').select('*').eq('id',u.user.id).maybeSingle();
-  if(pe || !p){state.profile=null;await sb.auth.signOut({scope:'local'});state.user=null;notify('Conta sem perfil. Fale com o administrador.',true);return;}
-  state.profile=p;
+  if(pe) throw new Error('Não foi possível verificar o seu acesso.');
+  if(p){state.profile=p;state.family=null;return;}
+  state.profile=null;
+  // Família é uma identidade própria. Jamais criar um perfil de voluntário fictício.
+  const {data:family,error:fe}=await sb.from('familias_kids').select('usuario_id,nome,status')
+    .eq('usuario_id',u.user.id).maybeSingle();
+  if(fe)throw new Error('Não foi possível verificar o acesso familiar.');
+  state.family=family||null;
 }
 async function loadData({silent=false}={}) {
   if (!sb || !canWork()) {render();return;}
@@ -479,6 +513,41 @@ async function loadData({silent=false}={}) {
   state.drafts={};if(!silent)render();
   return true;
 }
+async function loadKids({silent=false}={}) {
+  if(!sb||!state.user||(!canWork()&&state.family?.status!=='ativo'))return false;
+  const loadingUser=state.user.id;
+  const team=canWork();
+  const tasks=[
+    sb.from('turmas_kids').select('id,posicao,nome,idade_min_meses,idade_max_meses,ativa').order('posicao'),
+    sb.from('criancas_kids').select('id,numero,nome,nascimento,turma_id,origem,status').order('nome').limit(150),
+    sb.rpc('kids_termo_atual'),
+  ];
+  if(team){
+    tasks.push(sb.rpc('kids_familias_pendentes'));
+    tasks.push(sb.from('permissoes_equipe_kids').select('pessoa_id,permissao'));
+  } else {
+    tasks.push(sb.from('vinculos_kids').select('crianca_id,responsavel_id,status'));
+    tasks.push(sb.from('solicitacoes_privacidade_kids').select('id,tipo,status,crianca_id,criado_em')
+      .order('criado_em',{ascending:false}).limit(50));
+  }
+  const out=await Promise.all(tasks);
+  // Resposta atrasada de outra conta jamais repovoa dados privados na sessão nova.
+  if(state.user?.id!==loadingUser)return false;
+  if(out.some(x=>x.error)){
+    state.kidsError=true;
+    if(!silent)notify('Não foi possível carregar o Kids. A agenda continua disponível.',true);
+    return false;
+  }
+  state.kidsClasses=out[0].data||[];
+  state.kidsChildren=out[1].data||[];
+  state.kidsTerm=(out[2].data||[])[0]||null;
+  state.kidsFamilies=team?(out[3].data||[]):[];
+  state.kidsPermissions=team?(out[4]?.data||[]):[];
+  state.kidsLinks=!team?(out[3].data||[]):[];
+  state.kidsRequests=!team?(out[4].data||[]):[];
+  state.kidsError=false;if(!silent)render();
+  return true;
+}
 async function boot() {
   if(!isReady()) {render();return;}
   if (await enforceInactivity()) return;
@@ -494,6 +563,11 @@ async function boot() {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
     await loadData();
+    await loadKids({silent:true});render();
+  } else if(state.user && state.family?.status==='ativo') {
+    const available=tabs().map(x=>x[0]);
+    if(!available.includes(state.tab))state.tab='family';
+    await loadKids({silent:true});render();
   } else render();
 }
 function showError(error) {
@@ -531,7 +605,93 @@ async function handleForm(form) {
   const val=x=>{const v=form.querySelector(`[name="${x}"]`)?.value||'';
     return ['lp','sp','p1','p2'].includes(x)?v:v.trim();};
   try {
-    if(id==='login') {
+    if(id==='family-login') {
+      const email=val('fl-email').toLowerCase(), password=val('fl-password');
+      if(!emailValido(email))throw new Error('Confira seu e-mail.');
+      const {error}=await sb.auth.signInWithPassword({email,password});
+      if(error)throw new Error('Credenciais inválidas.');
+      state.tab='family';state.auth='family-login';
+      await boot();
+      notify('Acesso verificado.');
+    } else if(id==='family-signup') {
+      const code=val('fs-code').toLowerCase(), email=val('fs-email').toLowerCase();
+      const password=val('fs-password');
+      if(!/^[0-9a-f]{64}$/.test(code)||!emailValido(email)||
+        !(password.length>=10&&password.length<=128&&/[a-z]/.test(password)&&
+          /[A-Z]/.test(password)&&/\d/.test(password)&&/[^a-z0-9]/i.test(password)))
+        throw new Error('Confira convite, e-mail e senha forte.');
+      const checked=await sb.rpc('kids_convite_familia_valido',{p_codigo:code});
+      if(checked.error||!checked.data)throw new Error('Convite inválido ou encerrado.');
+      // A primeira validação não consome o convite. O resgate após verificação é atômico.
+      const {error}=await sb.auth.signUp({email,password,options:{
+        emailRedirectTo:location.origin+location.pathname
+      }});
+      if(error)throw new Error('Não foi possível processar o cadastro. Confira as informações.');
+      try{await sb.auth.signOut({scope:'local'});}catch{/* sessão pode não existir */}
+      state.user=null;state.profile=null;state.family=null;
+      state.auth='family-email-wait';
+      notify('Confira o e-mail e depois entre para confirmar seu convite.');
+    } else if(id==='family-redeem') {
+      if(!state.user||state.profile)throw new Error('Acesso familiar indisponível.');
+      const code=val('fr-code').toLowerCase(),name=val('fr-name').replace(/\s+/g,' ');
+      if(!/^[0-9a-f]{64}$/.test(code)||name.length<3||name.length>120)
+        throw new Error('Preencha os dados e seu código familiar.');
+      const {error}=await sb.rpc('kids_resgatar_convite_familia',{p_codigo:code,p_nome:name});
+      if(error)throw new Error('Convite indisponível ou e-mail ainda não confirmado.');
+      await readProfile();
+      state.auth='family-wait';
+      notify('Solicitação recebida. Aguarde aprovação da equipe.');
+    } else if(id==='kids-class') {
+      if(!canWork())throw new Error('Sem acesso a turmas.');
+      const pos=Number(val('kid-pos')),name=val('kid-class-name').replace(/\s+/g,' ');
+      const min=Number(val('kid-min')),max=Number(val('kid-max'));
+      if(!Number.isInteger(pos)||pos<1||pos>4||name.length<2||name.length>60||
+         !Number.isInteger(min)||!Number.isInteger(max)||min<0||max>215||max<min)
+        throw new Error('Verifique o nome e os limites etários da turma.');
+      const existing=state.kidsClasses.find(x=>x.posicao===pos);
+      const {error}=existing
+        ?await sb.from('turmas_kids').update({nome,idade_min_meses:min,idade_max_meses:max,
+          alterada_em:new Date().toISOString()}).eq('id',existing.id)
+        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,idade_max_meses:max});
+      if(error)throw new Error('Não foi possível salvar esta turma. Verifique as permissões.');
+      await loadKids({silent:true});
+      notify('Turma atualizada.');
+    } else if(id==='kids-child-team'||id==='kids-child-family') {
+      const name=val('kid-child-name').replace(/\s+/g,' '),dob=val('kid-child-dob');
+      const classId=val('kid-child-class');
+      if(name.length<2||name.length>120||!/^\d{4}-\d{2}-\d{2}$/.test(dob)||
+         !state.kidsClasses.some(t=>t.id===classId&&t.ativa))
+        throw new Error('Verifique os dados e a turma.');
+      if(!state.kidsTerm)throw new Error('Termo não publicado. Cadastro bloqueado.');
+      if(id==='kids-child-family'&&!form.querySelector('[name="kid-accept"]')?.checked)
+        throw new Error('É necessário ler e aceitar o termo.');
+      const {data,error}=await sb.rpc('kids_criar_crianca',{
+        p_nome:name,p_nascimento:dob,p_turma:classId,p_versao:state.kidsTerm.versao,
+        p_aceite:id==='kids-child-family'
+      });
+      if(error||!Array.isArray(data)||data.length!==1)
+        throw new Error('Não foi possível registrar a ficha. Verifique a autorização.');
+      await loadKids({silent:true});
+      notify('Cadastro criado com segurança. Identificador: '+data[0].numero);
+    } else if(id==='kids-link-child') {
+      if(!canWork())throw new Error('Sem permissão.');
+      const idChild=val('kid-link-id'),idFamily=val('kid-link-parent');
+      const {error}=await sb.rpc('kids_vincular_responsavel',{
+        p_crianca:idChild,p_responsavel:idFamily
+      });
+      if(error)throw new Error('Não foi possível solicitar consentimento. Confira o vínculo.');
+      await loadKids({silent:true});
+      notify('Vínculo encaminhado para confirmação do responsável.');
+    } else if(id==='family-privacy-request') {
+      if(!state.family?.usuario_id)throw new Error('Sem acesso familiar.');
+      const type=val('pr-kind'),child=val('pr-child')||null;
+      if(!['acesso','correcao','revogacao','exclusao'].includes(type))
+        throw new Error('Solicitação inválida.');
+      const {error}=await sb.rpc('kids_pedir_privacidade',{p_tipo:type,p_crianca:child});
+      if(error)throw new Error('Não foi possível enviar sua solicitação.');
+      await loadKids({silent:true});
+      notify('Solicitação enviada à administração.');
+    } else if(id==='login') {
       const username=cleanUsername(val('lu'));
       const isEmail=username.includes('@');
       if(isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username))throw new Error('Digite um e-mail válido.');
@@ -578,7 +738,7 @@ async function handleForm(form) {
       if(val('p1')!==val('p2')) throw new Error('As senhas precisam ser iguais.');
       await gateway('change_password',{senha:val('p1')});
       await sb.auth.signOut({scope:'global'});
-      state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();render();
+      state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';forgetHumanActivity();render();
       notify('Senha atualizada. Entre novamente com a nova senha.');
     } else if(id==='schedule') {
       if(!isLeader())throw new Error('Apenas a liderança pode publicar escalas.');
@@ -590,7 +750,16 @@ async function handleForm(form) {
       if(dia<isoLocal(new Date()))throw new Error('Escolha uma data atual ou futura.');
       if(!/^\d{2}:\d{2}$/.test(horario)||turma.length<2||turma.length>80||!Object.keys(FN).includes(funcao))
         throw new Error('Informe horário, turma e função válidos.');
-      const {error}=await sb.from('escalas').upsert({pessoa_id,dia,culto,horario,turma,funcao},{onConflict:'pessoa_id,dia,culto'});
+      // Turma cadastrada: escreve escala e vínculo UUID na MESMA transação SQL.
+      // Sem turma cadastrada, mantém o fluxo legado; não concede acesso infantil.
+      const classObj=state.kidsClasses.find(t=>t.id===turma&&t.ativa);
+      const {error}=classObj
+        ?await sb.rpc('kids_publicar_escala_turma',{
+          p_pessoa:pessoa_id,p_dia:dia,p_culto:culto,p_horario:horario,
+          p_turma:classObj.id,p_funcao:funcao
+        })
+        :await sb.from('escalas').upsert({pessoa_id,dia,culto,horario,turma,funcao},
+           {onConflict:'pessoa_id,dia,culto'});
       if(error)throw new Error('Não foi possível publicar a escala. Confira os dados e as permissões.');
       await loadData();notify('Escala publicada para o voluntário.');
     } else if(id==='invite') {
@@ -621,7 +790,39 @@ async function confirmAction() {
   if(!m||state.busy)return;
   state.busy=true;render();
   try {
-    if(m.action==='review') {
+    if(m.action==='kid-perm-change') {
+      if(!isAdmin())throw new Error('Apenas o administrador pode delegar permissões.');
+      const [person,permission]=String(m.id||'').split('|');
+      if(!person||!Object.hasOwn(KIDS_PERMISSIONS,permission)||
+        !state.people.some(p=>p.id===person&&p.status==='ativo'))
+        throw new Error('Permissão inválida.');
+      const granted=state.kidsPermissions.some(x=>x.pessoa_id===person&&x.permissao===permission);
+      const {error}=granted
+        ?await sb.from('permissoes_equipe_kids').delete().eq('pessoa_id',person).eq('permissao',permission)
+        :await sb.from('permissoes_equipe_kids').insert({pessoa_id:person,permissao:permission,
+          concedida_por:state.user.id});
+      if(error)throw new Error('Não foi possível alterar a permissão.');
+      await loadKids({silent:true});
+      notify(granted?'Permissão revogada.':'Permissão concedida.');
+    } else if(m.action==='kids-approve-family') {
+      const {error}=await sb.rpc('kids_aprovar_familia',{p_responsavel:m.id});
+      if(error)throw new Error('Não foi possível aprovar este responsável.');
+      await loadKids({silent:true});
+      notify('Responsável aprovado.');
+    } else if(m.action==='kids-approve-child') {
+      const {error}=await sb.rpc('kids_aprovar_crianca',{p_crianca:m.id});
+      if(error)throw new Error('Cadastro indisponível: confira o consentimento.');
+      await loadKids({silent:true});
+      notify('Cadastro infantil confirmado.');
+    } else if(m.action==='family-confirm-child') {
+      if(!state.kidsTerm)throw new Error('Termo não disponível.');
+      const {error}=await sb.rpc('kids_confirmar_filho',{
+        p_crianca:m.id,p_versao:state.kidsTerm.versao
+      });
+      if(error)throw new Error('Não foi possível confirmar o cadastro.');
+      await loadKids({silent:true});
+      notify('Consentimento registrado.');
+    } else if(m.action==='review') {
       const p=state.people.find(x=>x.id===m.id);if(!p)throw new Error('Cadastro não encontrado.');
       const d=draftOf(p);
       await gateway('review',{id:p.id,aprovar:m.approve,perfil:d.perfil,funcoes:d.funcoes,
@@ -638,7 +839,7 @@ async function confirmAction() {
     } else if(m.action==='discard-draft-out') {
       state.availabilityDraft=null;state.availabilitySuccess=false;
       await sb.auth.signOut({scope:'global'});
-      state.user=null;state.profile=null;state.auth='login';forgetHumanActivity();
+      state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';forgetHumanActivity();
     } else if(m.action==='delete-schedule') {
       if(!isLeader())throw new Error('Somente a liderança pode retirar escalas.');
       const {error}=await sb.from('escalas').delete().eq('id',m.id);
@@ -657,6 +858,46 @@ async function actionClick(b) {
     if (await enforceInactivity()) return;
     await loadData(); notify('Solicitações atualizadas.'); return;
   }
+  if(a==='family-login-tab'){state.auth='family-login';render();return;}
+  if(a==='family-signup-tab'){state.auth='family-signup';render();return;}
+  if(a==='family-refresh'){await boot();notify('Situação conferida.');return;}
+  if(a==='kids-open'){
+    if(!canWork())return;state.tab='kids';state.kidsInviteCode='';
+    await loadKids({silent:true});render();return;
+  }
+  if(a==='kids-back'){state.tab=isAdmin()?'pessoas':isLeader()?'equipe':'perfil';
+    state.kidsInviteCode='';render();return;}
+  if(a==='kids-refresh'){await loadKids();return;}
+  if(a==='kids-invite-family'){
+    if(!canWork()||!canApprove())return;
+    const {data,error}=await sb.rpc('kids_emitir_convite_familia',{p_dias:7});
+    if(error||!/^([0-9a-f]{64})$/.test(data||'')){
+      notify('Não foi possível emitir o convite familiar.',true);return;
+    }
+    state.kidsInviteCode=data;render();notify('Convite familiar criado. Copie o código agora.');return;
+  }
+  if(a==='kids-copy-invite'){
+    if(!state.kidsInviteCode)return;
+    try{await navigator.clipboard.writeText(state.kidsInviteCode);notify('Código familiar copiado.');}
+    catch{notify('Copie o código selecionando o texto.',true);}
+    return;
+  }
+  if(a==='kid-perm'){
+    if(!isAdmin()||!Object.hasOwn(KIDS_PERMISSIONS,b.dataset.p))return;
+    const granted=state.kidsPermissions.some(x=>x.pessoa_id===id&&x.permissao===b.dataset.p);
+    modal(granted?'Revogar permissão':'Conceder permissão',
+      (granted?'Remover ':'Liberar ')+KIDS_PERMISSIONS[b.dataset.p]+' para este voluntário? '+
+      'Isso não libera acesso a crianças fora da escala.',
+      'kid-perm-change',id+'|'+b.dataset.p);return;
+  }
+  if(a==='kids-approve-family'){modal('Aprovar responsável',
+    'Confirma a identidade familiar após a verificação de e-mail?','kids-approve-family',id);return;}
+  if(a==='kids-approve-child'){modal('Confirmar cadastro infantil',
+    'Verifique antes o vínculo e o consentimento. A ficha será ativada.','kids-approve-child',id);return;}
+  if(a==='family-confirm-child'){if(!state.kidsTerm)return;
+    modal('Registrar consentimento',
+      'Confirma que leu e aceita o termo versão '+state.kidsTerm.versao+
+      ' para o cadastro desta criança?','family-confirm-child',id);return;}
   if(a==='agenda-open'){state.tab='escala';render();$('#main').scrollTop=0;return;}
   if(a==='agenda-refresh'){await loadData();return;}
   if(a==='agenda-day'){
@@ -711,7 +952,7 @@ async function actionClick(b) {
     }
     const target=b.dataset.tab;
     if(target===state.tab)return;
-    state.tab=target;state.currentInvitation=null;
+    state.tab=target;state.currentInvitation=null;if(target!=='kids')state.kidsInviteCode='';
     const refresh=(target==='aprov' && canApprove()) || target==='escala';
     state.loadingTab=refresh;
     renderScreenTransition();
@@ -726,6 +967,7 @@ async function actionClick(b) {
   }
   if(a==='login'){state.auth='login';render();return;}
   if(a==='signup'){state.auth='signup';state.inviteVerified=false;render();return;}
+  if(a==='family-access'){state.auth='family-login';render();return;}
   if(a==='changeinvite'){state.inviteVerified=false;render();return;}
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
@@ -734,7 +976,7 @@ async function actionClick(b) {
     if(availabilityDirty()){
       modal('Rascunho não enviado','Sair da conta e descartar estas alterações?','discard-draft-out');return;
     }
-    await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;forgetHumanActivity();
+    await sb.auth.signOut({scope:'global'});state.user=null;state.profile=null;clearPrivateKidsState();forgetHumanActivity();
     state.auth='login';state.drafts={};state.people=[];render();return;
   }
   if(a==='reload'){await boot();if(canWork())notify('Seu acesso foi aprovado.');else notify('Seu cadastro ainda está em análise.');return;}
@@ -793,7 +1035,7 @@ if(isReady()) {
     auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:AUTH_STORAGE_KEY},
   });
   sb.auth.onAuthStateChange((event)=>{
-    if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;state.auth='login';render();}
+    if(event==='SIGNED_OUT'){forgetHumanActivity();state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';render();}
   });
 }
 render();
