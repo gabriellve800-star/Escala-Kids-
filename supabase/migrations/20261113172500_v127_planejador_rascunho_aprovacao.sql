@@ -167,9 +167,7 @@ begin
          (v_turma_id is not null and (m.turma_id=v_turma_id or
            (m.turma_id is null and lower(btrim(e.turma))=
              (select lower(btrim(t.nome)) from public.turmas_kids t where t.id=v_turma_id))))
-         or (v_turma_id is null and
-           ((v_funcao='portaria' and e.turma='Portaria') or
-            (v_funcao='lanche' and e.turma in ('Cozinha','Lanche'))))
+         or (v_turma_id is null)
        )
      ) then raise exception 'VAGAS_SEM_EQUIPE';end if;
    end if;
@@ -182,9 +180,7 @@ begin
          (v_turma_id is not null and (m.turma_id=v_turma_id or
           (m.turma_id is null and lower(btrim(e.turma))=
             (select lower(btrim(t.nome)) from public.turmas_kids t where t.id=v_turma_id))))
-         or (v_turma_id is null and
-            ((v_funcao='portaria' and e.turma='Portaria') or
-             (v_funcao='lanche' and e.turma in ('Cozinha','Lanche'))))
+         or (v_turma_id is null)
        )
    ) then raise exception 'VAGA_JA_PUBLICADA';end if;
  end loop;
