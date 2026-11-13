@@ -72,7 +72,7 @@ test('PR2: delegacao de permissoes e turmas no cadastro',()=>{
  assert.match(ui,/Idade inicial \(meses\)/);
  assert.match(app,/kid-perm-change/);
  assert.match(app,/concedida_por:state\.user\.id/);
- assert.match(app,/isAdmin\(\)\|\|state\.kidsPermissions/);
+ assert.match(app,/isAdmin\(\)\|\|isLeader\(\)\|\|state\.kidsPermissions/);
 });
 test('PR2: escalas vinculam UUID da turma via transacao, e legado preservado',()=>{
  assert.match(agenda,/turmas\.some\(t=>t\.ativa\)/);
@@ -92,7 +92,7 @@ test('PR2: privacidade e proibicao de fotos, dados de saude, push sensivel',()=>
 test('PR2: cache PWA 1.2.7 e scripts atualizados de forma coerente',()=>{
  assert.match(html,/v1\.2\.7/);
  assert.match(html,/app\.js\?v=1\.2\.7/);
- assert.match(sw,/escala-kids-v1\.2\.7-familias/);
+ assert.match(sw,/escala-kids-v1\.2\.7-planejamento/);
  assert.match(sw,/kids-ui\.js\?v=1\.2\.7/);
  assert.match(sw,/agenda\.js\?v=1\.2\.7/);
  assert.match(app,/kids-ui\.js\?v=1\.2\.7/);
