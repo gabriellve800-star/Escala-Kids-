@@ -5,10 +5,10 @@ const fs=require('node:fs');
 const path=require('node:path');
 const base=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(base,p),'utf8');
-const sql=read('supabase/migrations/20261112203000_fase3_pr2_cadastro_transacional.sql');
-const pending=read('supabase/migrations/20261112204500_fase3_pr2_familia_pendente_rls.sql');
-const schedule=read('supabase/migrations/20261112210000_fase3_pr2_escala_id_turma.sql');
-const guard=read('supabase/migrations/20261112211500_fase3_pr2_private_rpc_hardening.sql');
+const sql=read('supabase/migrations/20261113000013_fase3_pr2_cadastro_transacional.sql');
+const pending=read('supabase/migrations/20261113000016_fase3_pr2_familia_pendente_rls.sql');
+const schedule=read('supabase/migrations/20261113000019_fase3_pr2_escala_id_turma.sql');
+const guard=read('supabase/migrations/20261113000022_fase3_pr2_private_rpc_hardening.sql');
 const app=read('app.js'),ui=read('kids-ui.js'),agenda=read('agenda.js');
 const html=read('index.html'),sw=read('sw.js');
 const q=read('supabase/tests/fase3_pr2_flows_rollback.sql');
@@ -106,7 +106,7 @@ test('PR2: trocar de conta limpa dados infantis e descarta consultas atrasadas',
  assert.match(app,/state\.user\.id!==u\.user\.id/);
 });
 test('PR2: familias pendentes podem exercer direitos LGPD',()=>{
- const migration=read('supabase/migrations/20261112213000_fase3_pr2_solicitacoes_lgpd.sql');
+ const migration=read('supabase/migrations/20261113000025_fase3_pr2_solicitacoes_lgpd.sql');
  assert.match(migration,/pendente','ativo','desativado/);
  assert.match(migration,/public\.solicitacoes_privacidade_kids/);
  assert.match(ui,/family-privacy-request/);
