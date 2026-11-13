@@ -6,7 +6,8 @@ import { config } from './config.js';
 import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.6';
 import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
 import { syncNavigation } from './navigation.js?v=1.2.5';
-import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.6';
+import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.7';
+import { createSuggestion, plannerUI, candidatePeople, summaryFor,serviceKey } from './planner.js?v=1.2.7';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -111,6 +112,7 @@ const state = {
   availabilityDraft:null, availabilitySaving:false, availabilitySuccess:false, loadingTab:false,
   family:null, kidsClasses:[], kidsChildren:[], kidsLinks:[], kidsFamilies:[],
   kidsPermissions:[], kidsRequests:[], kidsTerm:null, kidsInviteCode:'', kidsError:false,
+  plannerBase:null,plannerItems:[],plannerVersion:null,plannerDirty:false,plannerError:false,plannerLoading:false,
 };
 let sb;
 let toastTimer;
@@ -121,6 +123,9 @@ const isReady = () => /^https:\/\//.test(config.supabaseUrl || '') &&
 const isAdmin = () => state.profile?.perfil === 'administrador';
 const canApprove = () => isAdmin() || (state.profile?.perfil === 'lider' && state.profile?.pode_aprovar);
 const isLeader = () => isAdmin() || state.profile?.perfil === 'lider';
+const hasKidsPermission=p=>state.kidsPermissions.some(x=>x.pessoa_id===state.user?.id&&x.permissao===p);
+const canPlan=()=>canWork()&&(isLeader()||hasKidsPermission('montar_escalas')||hasKidsPermission('aprovar_escalas'));
+const canPublishPlan=()=>canWork()&&(isLeader()||hasKidsPermission('aprovar_escalas'));
 const canWork = () => state.profile?.status === 'ativo' && !state.profile.primeiro_acesso;
 const first = () => (state.profile?.nome||state.family?.nome||'Olá').split(' ')[0];
 
@@ -142,7 +147,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.6</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.7</small>');
   }
   $('#seg').innerHTML=state.user && (canWork()||state.family?.status==='ativo')
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -151,10 +156,10 @@ function tabs() {
   if (!state.user) return [];
   if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
   if (!canWork()) return [];
-  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
-  if (isLeader()) return [['escala','Escala','cal'],['kids','Kids','users'],['equipe','Equipe','users'],
+  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['planejamento','Escala sugerida','calendar-check'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
+  if (isLeader()) return [['escala','Escala','cal'],['planejamento','Escala sugerida','calendar-check'],['kids','Kids','users'],['equipe','Equipe','users'],
     ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
-  return [['escala','Minha Escala','cal'],...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['inicio','Início','home'],['perfil','Perfil','user']];
+  return [['escala','Minha Escala','cal'],...(canPlan()?[['planejamento','Escala sugerida','calendar-check']]:[]),...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
   syncNavigation($('#nav'),tabs(),state.tab,ico,esc);
@@ -333,10 +338,14 @@ function activeUI() {
     '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-card"></div>'+
     '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>';
   switch(state.tab) {
+    case 'planejamento':return !canPlan()?'<h2>Sem permissão para planejar escalas</h2>':
+      state.plannerError?'<h2>Escala sugerida</h2><div class="alert">Não foi possível carregar a sugestão. A escala publicada permanece intacta.</div><button class="btn ghost" data-a="planner-refresh">Tentar novamente</button>':
+      plannerUI({base:state.plannerBase,items:state.plannerItems,dirty:state.plannerDirty,
+        version:state.plannerVersion,loading:state.plannerLoading,esc});
     case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
       kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
          families:state.kidsFamilies,term:state.kidsTerm,esc,
-         canManageClasses:isAdmin()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
+         canManageClasses:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
          canRegisterChild:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='cadastrar_criancas'),
          canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode});
     case 'aprov':return approvalsUI();
@@ -466,6 +475,8 @@ function clearPrivateKidsState() {
   state.family=null;state.kidsChildren=[];state.kidsLinks=[];
   state.kidsFamilies=[];state.kidsRequests=[];state.kidsPermissions=[];
   state.kidsTerm=null;state.kidsClasses=[];state.kidsInviteCode='';state.kidsError=false;
+  state.plannerBase=null;state.plannerItems=[];state.plannerVersion=null;state.plannerDirty=false;
+  state.plannerError=false;state.plannerLoading=false;
 }
 async function readProfile() {
   const {data:u,error:e}=await sb.auth.getUser();
@@ -547,6 +558,23 @@ async function loadKids({silent=false}={}) {
   state.kidsRequests=!team?(out[4].data||[]):[];
   state.kidsError=false;if(!silent)render();
   return true;
+}
+async function loadPlanner() {
+  if(!sb||!state.user||!canPlan())return false;
+  const userId=state.user.id;
+  state.plannerLoading=true;state.plannerError=false;
+  const month=firstMonth(1);
+  const {data,error}=await sb.rpc('kids_planejamento_base',{p_mes:month});
+  if(state.user?.id!==userId)return false;
+  state.plannerLoading=false;
+  if(error||!data||!Array.isArray(data.turmas)||!Array.isArray(data.equipe)){
+    state.plannerError=true;notify('Planejamento indisponível. Nenhuma escala foi publicada.',true);return false;
+  }
+  state.plannerBase=data;
+  state.plannerItems=Array.isArray(data.rascunho?.itens)?data.rascunho.itens:[];
+  state.plannerVersion=data.rascunho?.versao??null;
+  state.plannerDirty=false;state.plannerError=false;
+  render();return true;
 }
 async function boot() {
   if(!isReady()) {render();return;}
