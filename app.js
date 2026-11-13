@@ -890,6 +890,10 @@ async function confirmAction() {
     } else if(m.action==='discard-draft-tab') {
       state.availabilityDraft=null;state.availabilitySuccess=false;
       state.tab=m.id;
+    } else if(m.action==='discard-planner-out') {
+      state.plannerItems=[];state.plannerDirty=false;
+      await sb.auth.signOut({scope:'global'});
+      state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';forgetHumanActivity();
     } else if(m.action==='discard-draft-out') {
       state.availabilityDraft=null;state.availabilitySuccess=false;
       await sb.auth.signOut({scope:'global'});
@@ -1070,6 +1074,9 @@ async function actionClick(b) {
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
   if(a==='out'){
+    if(state.plannerDirty){
+      modal('Escala sugerida não salva','Sair da conta e descartar as alterações locais?', 'discard-planner-out');return;
+    }
     if(state.availabilitySaving){notify('Conclua o envio antes de sair.',true);return;}
     if(availabilityDirty()){
       modal('Rascunho não enviado','Sair da conta e descartar estas alterações?','discard-draft-out');return;
@@ -1125,6 +1132,31 @@ $('#app').addEventListener('pointerdown',e=>{
 ['pointerup','pointercancel'].forEach(type=>$('#app').addEventListener(type,()=>{
   setTimeout(()=>$('#nav').querySelectorAll('.pressing').forEach(x=>x.classList.remove('pressing')),90);
 },{passive:true}));
+$('#app').addEventListener('change',e=>{
+  if(state.tab!=='planejamento'||!canPlan()||!state.plannerBase||
+     state.plannerBase.rascunho?.estado==='aprovado')return;
+  const node=e.target;
+  if(node.matches('select[data-planner-person]')){
+    const idx=Number(node.dataset.plannerPerson);
+    const current=state.plannerItems[idx];
+    if(!current)return;
+    const chosen=node.value;
+    if(chosen&&!candidatePeople(current,state.plannerBase,state.plannerItems).some(p=>p.id===chosen)){
+      notify('Este voluntário não está disponível ou já ocupa outra vaga no culto.',true);render();return;
+    }
+    current.pessoa_id=chosen||null;state.plannerDirty=true;render();return;
+  }
+  if(node.matches('input[data-planner-time]')){
+    const key=node.dataset.plannerTime,time=node.value||null;
+    if(time&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){
+      notify('Horário inválido.',true);render();return;
+    }
+    for(const item of state.plannerItems){
+      if(serviceKey(item)===key)item.horario=time;
+    }
+    state.plannerDirty=true;render();
+  }
+});
 $('#app').addEventListener('submit', async e=>{const form=e.target.closest('form[data-form]');if(!form)return;e.preventDefault();await handleForm(form);});
 $('#app').addEventListener('click', async e=>{const b=e.target.closest('button[data-a]');if(!b||b.disabled)return;await actionClick(b);});
 
@@ -1148,7 +1180,7 @@ const captureActivity = () => {
 };
 window.addEventListener('pointerdown',captureActivity,{passive:true});
 window.addEventListener('beforeunload', event=>{
-  if(availabilityDirty()){event.preventDefault();event.returnValue='';}
+  if(availabilityDirty()||state.plannerDirty){event.preventDefault();event.returnValue='';}
 });
 window.addEventListener('keydown',captureActivity);
 window.addEventListener('focus',() => {
