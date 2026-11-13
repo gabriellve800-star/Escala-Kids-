@@ -588,10 +588,12 @@ async function boot() {
     } catch { /* se QR expirou, pessoa pode inserir um novo código */ }
   }
   if(state.user && canWork()) {
+    await loadData();
+    await loadKids({silent:true});
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
-    await loadData();
-    await loadKids({silent:true});render();
+    if(state.tab==='planejamento'&&canPlan())await loadPlanner();
+    render();
   } else if(state.user && state.family?.status==='ativo') {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab))state.tab='family';
@@ -677,13 +679,16 @@ async function handleForm(form) {
          !Number.isInteger(min)||!Number.isInteger(max)||min<0||max>215||max<min)
         throw new Error('Verifique o nome e os limites etários da turma.');
       const existing=state.kidsClasses.find(x=>x.posicao===pos);
-      const {error}=existing
+      // RLS UPDATE pode afetar zero linhas SEM erro: exigir retorno da linha alterada.
+      const {data,error}=existing
         ?await sb.from('turmas_kids').update({nome,idade_min_meses:min,idade_max_meses:max,
-          alterada_em:new Date().toISOString()}).eq('id',existing.id)
-        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,idade_max_meses:max});
-      if(error)throw new Error('Não foi possível salvar esta turma. Verifique as permissões.');
+          alterada_em:new Date().toISOString()}).eq('id',existing.id).select('id,nome').maybeSingle()
+        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,
+          idade_max_meses:max}).select('id,nome').maybeSingle();
+      if(error||!data||data.nome!==name)
+        throw new Error('A turma não foi alterada. Verifique a autorização e tente novamente.');
       await loadKids({silent:true});
-      notify('Turma atualizada.');
+      notify('Nome e faixa etária da turma salvos com sucesso.');
     } else if(id==='kids-child-team'||id==='kids-child-family') {
       const name=val('kid-child-name').replace(/\s+/g,' '),dob=val('kid-child-dob');
       const classId=val('kid-child-class');
@@ -832,6 +837,27 @@ async function confirmAction() {
       if(error)throw new Error('Não foi possível alterar a permissão.');
       await loadKids({silent:true});
       notify(granted?'Permissão revogada.':'Permissão concedida.');
+    } else if(m.action==='planner-regenerate'){
+      if(!canPlan()||!state.plannerBase||state.plannerBase.rascunho?.estado==='aprovado')
+        throw new Error('Sem permissão para recalcular esta escala.');
+      state.plannerItems=createSuggestion(state.plannerBase);
+      state.plannerDirty=true;
+      notify('Sugestão recalculada. Revise as vagas e salve o rascunho.');
+    } else if(m.action==='planner-reload'){
+      await loadPlanner();notify('Rascunho salvo recarregado.');
+    } else if(m.action==='planner-approve-confirm'){
+      if(!canPublishPlan()||!state.plannerBase||state.plannerVersion==null||state.plannerDirty)
+        throw new Error('Salve a versão atual antes de aprovar.');
+      const stats=summaryFor(state.plannerItems,state.plannerBase);
+      if(stats.gaps||stats.timesMissing||!stats.total)
+        throw new Error('Há vagas ou horários pendentes. Confira a planilha.');
+      const {data,error}=await sb.rpc('kids_aprovar_sugestao',{
+        p_mes:state.plannerBase.mes,p_versao:state.plannerVersion
+      });
+      if(error||!Number.isInteger(data))throw new Error('A aprovação não foi concluída. Recarregue e confira se o rascunho está atualizado.');
+      await loadPlanner();
+      if(isLeader())await loadData({silent:true});
+      notify(data+' designações publicadas. A equipe já pode visualizar sua escala.');
     } else if(m.action==='kids-approve-family') {
       const {error}=await sb.rpc('kids_aprovar_familia',{p_responsavel:m.id});
       if(error)throw new Error('Não foi possível aprovar este responsável.');
@@ -926,6 +952,49 @@ async function actionClick(b) {
     modal('Registrar consentimento',
       'Confirma que leu e aceita o termo versão '+state.kidsTerm.versao+
       ' para o cadastro desta criança?','family-confirm-child',id);return;}
+  if(a==='planner-open'){
+    if(!canPlan())return;
+    state.tab='planejamento';render();await loadPlanner();$('#main').scrollTop=0;return;
+  }
+  if(a==='planner-refresh'){
+    if(!canPlan())return;
+    if(state.plannerDirty){
+      modal('Descartar rascunho não salvo','Recarregar a escala salva e perder alterações locais?','planner-reload');return;
+    }
+    await loadPlanner();return;
+  }
+  if(a==='planner-generate'){
+    if(!canPlan()||!state.plannerBase||state.plannerBase.rascunho?.estado==='aprovado')return;
+    if(state.plannerItems.length){
+      modal('Recalcular sugestão','A nova distribuição substituirá as designações do rascunho atual. Confirma?','planner-regenerate');return;
+    }
+    try{state.plannerItems=createSuggestion(state.plannerBase);state.plannerDirty=true;render();
+      notify('Sugestão gerada. Revise as vagas e os horários.');}
+    catch(e){notify(showError(e),true);}
+    return;
+  }
+  if(a==='planner-save'){
+    if(!canPlan()||!state.plannerBase||!state.plannerDirty||state.busy)return;
+    state.busy=true;render();
+    try{
+      const {data,error}=await sb.rpc('kids_salvar_sugestao',{
+        p_mes:state.plannerBase.mes,p_itens:state.plannerItems,p_versao:state.plannerVersion
+      });
+      if(error||!Number.isInteger(data))throw new Error('Não foi possível salvar. Outro gestor pode ter alterado o rascunho. Recarregue antes de tentar novamente.');
+      await loadPlanner();notify('Rascunho compartilhado com a liderança. Nenhuma escala foi publicada.');
+    }catch(e){notify(showError(e),true);}finally{state.busy=false;render();}
+    return;
+  }
+  if(a==='planner-approve'){
+    if(!canPublishPlan()||state.plannerDirty||state.plannerVersion==null)return;
+    const stats=summaryFor(state.plannerItems,state.plannerBase);
+    if(stats.gaps||stats.timesMissing||!stats.total){notify('Preencha todas as vagas e horários antes da aprovação.',true);return;}
+    modal('Aprovar escala do mês',
+      'Publicar '+stats.assigned+' designações para '+state.plannerBase.mes+
+      '? Esta ação altera a escala oficial dos voluntários e não pode ser desfeita em lote.',
+      'planner-approve-confirm');
+    return;
+  }
   if(a==='agenda-open'){state.tab='escala';render();$('#main').scrollTop=0;return;}
   if(a==='agenda-refresh'){await loadData();return;}
   if(a==='agenda-day'){
@@ -981,12 +1050,13 @@ async function actionClick(b) {
     const target=b.dataset.tab;
     if(target===state.tab)return;
     state.tab=target;state.currentInvitation=null;if(target!=='kids')state.kidsInviteCode='';
-    const refresh=(target==='aprov' && canApprove()) || target==='escala';
+    const refresh=(target==='aprov' && canApprove()) || target==='escala' || (target==='planejamento'&&canPlan());
     state.loadingTab=refresh;
     renderScreenTransition();
     $('#main').scrollTop=0;
     if(refresh){
-      await loadData({silent:true});
+      if(target==='planejamento')await loadPlanner();
+      else await loadData({silent:true});
       state.loadingTab=false;
       renderScreenTransition();
     }
