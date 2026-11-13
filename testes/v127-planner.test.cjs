@@ -93,3 +93,31 @@ test('v127: responsável e voluntário comum não têm permissão para planejar'
  assert.match(sql,/revoke all on private\.rascunhos_escala_kids/);
  assert.match(sql,/create policy rascunho_escala_privado/);
 });
+
+test('v127: planilha renderiza dia, turma, cargo, nome e campos de edição',async()=>{
+ const m=await planner(),base=await makeBase();
+ const draft=m.createSuggestion(base);
+ const html=m.plannerUI({base,items:draft,dirty:true,version:null,esc:String});
+ assert.match(html,/Escala sugerida/);
+ assert.match(html,/Professor\(a\)/);
+ assert.match(html,/Cozinha/);
+ assert.match(html,/Portaria/);
+ assert.match(html,/Turma de Teste 1/);
+ assert.match(html,/planner-service/);
+ assert.match(html,/data-planner-person/);
+ assert.match(html,/data-planner-time/);
+ assert.match(html,/Salvar rascunho/);
+ assert.match(html,/Aprovar e publicar/);
+ assert.match(html,/disabled/);
+});
+test('v127: cozinha e portaria legadas são contabilizadas pelo cargo, não pelo texto da turma',async()=>{
+ const m=await planner(),base=await makeBase();
+ const service=m.sessionsForMonth(base.mes)[0];
+ const oldKitchen={...service,funcao:'lanche',turma:'Maternal',turma_id:null,pessoa_id:'coz'};
+ const oldGate={...service,funcao:'portaria',turma:'Berçário',turma_id:null,pessoa_id:'port'};
+ assert.equal(m.publishedForSlot({...service,funcao:'lanche',turma_id:null},[oldKitchen],klass)?.pessoa_id,'coz');
+ assert.equal(m.publishedForSlot({...service,funcao:'portaria',turma_id:null},[oldGate],klass)?.pessoa_id,'port');
+ const sqlNow=read('supabase/migrations/20261113172500_v127_planejador_rascunho_aprovacao.sql');
+ assert.doesNotMatch(sqlNow,/e\.turma='Portaria'/);
+ assert.match(sqlNow,/\(v_turma_id is null\)/);
+});
