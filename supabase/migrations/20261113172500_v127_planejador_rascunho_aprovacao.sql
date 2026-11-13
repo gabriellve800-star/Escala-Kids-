@@ -88,8 +88,8 @@ create or replace function private.kids_validar_sugestao(
 returns void language plpgsql security definer set search_path=''
 as $$
 declare
-  elem jsonb; dia date; culto text; funcao text; turma_id uuid;
-  pessoa uuid; horario text; chave text;
+  elem jsonb; v_dia date; v_culto text; v_funcao text; v_turma_id uuid;
+  v_pessoa uuid; v_horario text; v_chave text;
   chaves text[]:=array[]::text[]; ocupacoes text[]:=array[]::text[];
   total int; esperado int; cultos_do_mes int; quantidade_turmas int;
 begin
@@ -121,70 +121,70 @@ begin
      then raise exception 'CAMPOS_INDEVIDOS';end if;
    if coalesce(elem->>'dia','') !~ '^\d{4}-\d{2}-\d{2}$'
      then raise exception 'DATA_INVALIDA';end if;
-   dia=(elem->>'dia')::date;culto=elem->>'culto';funcao=elem->>'funcao';
-   if dia<p_mes or dia>=(p_mes+interval '1 month')::date
-     or not ((extract(isodow from dia)=7 and culto in ('domingo_manha','domingo_noite'))
-          or (extract(isodow from dia)=3 and culto='quarta_noite'))
-     or funcao not in ('professor','auxiliar','portaria','lanche')
+   v_dia=(elem->>'dia')::date;v_culto=elem->>'culto';v_funcao=elem->>'funcao';
+   if v_dia<p_mes or v_dia>=(p_mes+interval '1 month')::date
+     or not ((extract(isodow from v_dia)=7 and v_culto in ('domingo_manha','domingo_noite'))
+          or (extract(isodow from v_dia)=3 and v_culto='quarta_noite'))
+     or v_funcao not in ('professor','auxiliar','portaria','lanche')
      then raise exception 'SLOT_INVALIDO';end if;
-   if funcao in ('professor','auxiliar') then
+   if v_funcao in ('professor','auxiliar') then
      if elem->>'turma_id' is null then raise exception 'TURMA_OBRIGATORIA';end if;
-     turma_id=(elem->>'turma_id')::uuid;
-     if not exists(select 1 from public.turmas_kids where id=turma_id and ativa)
+     v_turma_id=(elem->>'turma_id')::uuid;
+     if not exists(select 1 from public.turmas_kids where id=v_turma_id and ativa)
        then raise exception 'TURMA_INVALIDA';end if;
    else
      if elem->>'turma_id' is not null then raise exception 'CARGO_SEM_TURMA';end if;
-     turma_id=null;
+     v_turma_id=null;
    end if;
-   chave=dia::text||'|'||culto||'|'||funcao||'|'||coalesce(turma_id::text,'-');
-   if chave=any(chaves) then raise exception 'VAGA_REPETIDA';end if;
-   chaves=array_append(chaves,chave);
+   v_chave=v_dia::text||'|'||v_culto||'|'||v_funcao||'|'||coalesce(v_turma_id::text,'-');
+   if v_chave=any(chaves) then raise exception 'VAGA_REPETIDA';end if;
+   chaves=array_append(chaves,v_chave);
 
-   pessoa=nullif(elem->>'pessoa_id','')::uuid;
-   horario=nullif(elem->>'horario','');
-   if horario is not null and horario !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+   v_pessoa=nullif(elem->>'pessoa_id','')::uuid;
+   v_horario=nullif(elem->>'horario','');
+   if v_horario is not null and v_horario !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
       then raise exception 'HORARIO_INVALIDO';end if;
-   if pessoa is not null then
+   if v_pessoa is not null then
      if not exists(select 1 from public.perfis p
-       join public.funcoes_pessoa f on f.pessoa_id=p.id and f.funcao=funcao
-       join public.disponibilidades v on v.pessoa_id=p.id and v.dia=dia and v.culto=culto
-       where p.id=pessoa and p.status='ativo' and not p.primeiro_acesso)
+       join public.funcoes_pessoa f on f.pessoa_id=p.id and f.funcao=v_funcao
+       join public.disponibilidades v on v.pessoa_id=p.id and v.dia=v_dia and v.culto=v_culto
+       where p.id=v_pessoa and p.status='ativo' and not p.primeiro_acesso)
        then raise exception 'VOLUNTARIO_INDISPONIVEL_OU_SEM_FUNCAO';end if;
-     chave=dia::text||'|'||culto||'|'||pessoa::text;
-     if chave=any(ocupacoes) then raise exception 'VOLUNTARIO_DUPLICADO_NO_CULTO';end if;
-     ocupacoes=array_append(ocupacoes,chave);
-     if p_final and horario is null then raise exception 'HORARIO_OBRIGATORIO';end if;
+     v_chave=v_dia::text||'|'||v_culto||'|'||v_pessoa::text;
+     if v_chave=any(ocupacoes) then raise exception 'VOLUNTARIO_DUPLICADO_NO_CULTO';end if;
+     ocupacoes=array_append(ocupacoes,v_chave);
+     if p_final and v_horario is null then raise exception 'HORARIO_OBRIGATORIO';end if;
      if exists(select 1 from public.escalas e
-      where e.pessoa_id=pessoa and e.dia=dia and e.culto=culto)
+      where e.pessoa_id=v_pessoa and e.dia=v_dia and e.culto=v_culto)
        then raise exception 'VOLUNTARIO_JA_PUBLICADO';end if;
    elsif p_final then
      -- Só permite vaga em branco se já estiver ocupada por escala publicada.
      if not exists(
        select 1 from public.escalas e
        left join public.escalas_turmas_kids m on m.escala_id=e.id
-       where e.dia=dia and e.culto=culto and e.funcao=funcao
+       where e.dia=v_dia and e.culto=v_culto and e.funcao=v_funcao
        and (
-         (turma_id is not null and (m.turma_id=turma_id or
+         (v_turma_id is not null and (m.turma_id=v_turma_id or
            (m.turma_id is null and lower(btrim(e.turma))=
-             (select lower(btrim(t.nome)) from public.turmas_kids t where t.id=turma_id))))
-         or (turma_id is null and
-           ((funcao='portaria' and e.turma='Portaria') or
-            (funcao='lanche' and e.turma in ('Cozinha','Lanche'))))
+             (select lower(btrim(t.nome)) from public.turmas_kids t where t.id=v_turma_id))))
+         or (v_turma_id is null and
+           ((v_funcao='portaria' and e.turma='Portaria') or
+            (v_funcao='lanche' and e.turma in ('Cozinha','Lanche'))))
        )
      ) then raise exception 'VAGAS_SEM_EQUIPE';end if;
    end if;
-   -- Impede adicionar uma SEGUNDA pessoa à mesma vaga já publicada.
-   if pessoa is not null and exists(
+   -- Impede adicionar uma SEGUNDA v_pessoa à mesma vaga já publicada.
+   if v_pessoa is not null and exists(
      select 1 from public.escalas e
      left join public.escalas_turmas_kids m on m.escala_id=e.id
-     where e.dia=dia and e.culto=culto and e.funcao=funcao
+     where e.dia=v_dia and e.culto=v_culto and e.funcao=v_funcao
        and (
-         (turma_id is not null and (m.turma_id=turma_id or
+         (v_turma_id is not null and (m.turma_id=v_turma_id or
           (m.turma_id is null and lower(btrim(e.turma))=
-            (select lower(btrim(t.nome)) from public.turmas_kids t where t.id=turma_id))))
-         or (turma_id is null and
-            ((funcao='portaria' and e.turma='Portaria') or
-             (funcao='lanche' and e.turma in ('Cozinha','Lanche'))))
+            (select lower(btrim(t.nome)) from public.turmas_kids t where t.id=v_turma_id))))
+         or (v_turma_id is null and
+            ((v_funcao='portaria' and e.turma='Portaria') or
+             (v_funcao='lanche' and e.turma in ('Cozinha','Lanche'))))
        )
    ) then raise exception 'VAGA_JA_PUBLICADA';end if;
  end loop;
