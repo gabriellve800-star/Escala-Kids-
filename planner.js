@@ -31,8 +31,7 @@ export function publishedForSlot(s,published=[],classes=[]){
  return published.find(p=>p.dia===s.dia&&p.culto===s.culto&&p.funcao===s.funcao&&(
   s.turma_id
     ?p.turma_id===s.turma_id||(!p.turma_id&&norm(p.turma)===norm(cls?.nome))
-    :s.funcao==='portaria'?norm(p.turma)==='portaria'
-      :['cozinha','lanche'].includes(norm(p.turma))
+    :true // Portaria e cozinha são funções do culto, não pertencem a uma turma.
  ))||null;
 }
 export function candidatePeople(slot,base,items=[]){
