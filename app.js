@@ -3,10 +3,11 @@
 // Funções de escala, check-in e crianças serão conectadas nas próximas fases.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle';
 import { config } from './config.js';
-import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.6';
+import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.7';
 import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
 import { syncNavigation } from './navigation.js?v=1.2.5';
-import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.6';
+import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.7';
+import { createSuggestion, plannerUI, candidatePeople, summaryFor,serviceKey } from './planner.js?v=1.2.7';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -111,6 +112,7 @@ const state = {
   availabilityDraft:null, availabilitySaving:false, availabilitySuccess:false, loadingTab:false,
   family:null, kidsClasses:[], kidsChildren:[], kidsLinks:[], kidsFamilies:[],
   kidsPermissions:[], kidsRequests:[], kidsTerm:null, kidsInviteCode:'', kidsError:false,
+  plannerBase:null,plannerItems:[],plannerVersion:null,plannerDirty:false,plannerError:false,plannerLoading:false,
 };
 let sb;
 let toastTimer;
@@ -121,6 +123,9 @@ const isReady = () => /^https:\/\//.test(config.supabaseUrl || '') &&
 const isAdmin = () => state.profile?.perfil === 'administrador';
 const canApprove = () => isAdmin() || (state.profile?.perfil === 'lider' && state.profile?.pode_aprovar);
 const isLeader = () => isAdmin() || state.profile?.perfil === 'lider';
+const hasKidsPermission=p=>state.kidsPermissions.some(x=>x.pessoa_id===state.user?.id&&x.permissao===p);
+const canPlan=()=>canWork()&&(isLeader()||hasKidsPermission('montar_escalas')||hasKidsPermission('aprovar_escalas'));
+const canPublishPlan=()=>canWork()&&(isLeader()||hasKidsPermission('aprovar_escalas'));
 const canWork = () => state.profile?.status === 'ativo' && !state.profile.primeiro_acesso;
 const first = () => (state.profile?.nome||state.family?.nome||'Olá').split(' ')[0];
 
@@ -142,7 +147,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.6</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.7</small>');
   }
   $('#seg').innerHTML=state.user && (canWork()||state.family?.status==='ativo')
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -151,10 +156,10 @@ function tabs() {
   if (!state.user) return [];
   if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
   if (!canWork()) return [];
-  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
-  if (isLeader()) return [['escala','Escala','cal'],['kids','Kids','users'],['equipe','Equipe','users'],
+  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['planejamento','Escala sugerida','calendar-check'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
+  if (isLeader()) return [['escala','Escala','cal'],['planejamento','Escala sugerida','calendar-check'],['kids','Kids','users'],['equipe','Equipe','users'],
     ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
-  return [['escala','Minha Escala','cal'],...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['inicio','Início','home'],['perfil','Perfil','user']];
+  return [['escala','Minha Escala','cal'],...(canPlan()?[['planejamento','Escala sugerida','calendar-check']]:[]),...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
   syncNavigation($('#nav'),tabs(),state.tab,ico,esc);
@@ -333,10 +338,14 @@ function activeUI() {
     '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-card"></div>'+
     '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>';
   switch(state.tab) {
+    case 'planejamento':return !canPlan()?'<h2>Sem permissão para planejar escalas</h2>':
+      state.plannerError?'<h2>Escala sugerida</h2><div class="alert">Não foi possível carregar a sugestão. A escala publicada permanece intacta.</div><button class="btn ghost" data-a="planner-refresh">Tentar novamente</button>':
+      plannerUI({base:state.plannerBase,items:state.plannerItems,dirty:state.plannerDirty,
+        version:state.plannerVersion,loading:state.plannerLoading,esc});
     case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
       kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
          families:state.kidsFamilies,term:state.kidsTerm,esc,
-         canManageClasses:isAdmin()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
+         canManageClasses:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
          canRegisterChild:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='cadastrar_criancas'),
          canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode});
     case 'aprov':return approvalsUI();
@@ -466,6 +475,8 @@ function clearPrivateKidsState() {
   state.family=null;state.kidsChildren=[];state.kidsLinks=[];
   state.kidsFamilies=[];state.kidsRequests=[];state.kidsPermissions=[];
   state.kidsTerm=null;state.kidsClasses=[];state.kidsInviteCode='';state.kidsError=false;
+  state.plannerBase=null;state.plannerItems=[];state.plannerVersion=null;state.plannerDirty=false;
+  state.plannerError=false;state.plannerLoading=false;
 }
 async function readProfile() {
   const {data:u,error:e}=await sb.auth.getUser();
@@ -548,6 +559,23 @@ async function loadKids({silent=false}={}) {
   state.kidsError=false;if(!silent)render();
   return true;
 }
+async function loadPlanner() {
+  if(!sb||!state.user||!canPlan())return false;
+  const userId=state.user.id;
+  state.plannerLoading=true;state.plannerError=false;
+  const month=firstMonth(1);
+  const {data,error}=await sb.rpc('kids_planejamento_base',{p_mes:month});
+  if(state.user?.id!==userId)return false;
+  state.plannerLoading=false;
+  if(error||!data||!Array.isArray(data.turmas)||!Array.isArray(data.equipe)){
+    state.plannerError=true;notify('Planejamento indisponível. Nenhuma escala foi publicada.',true);return false;
+  }
+  state.plannerBase=data;
+  state.plannerItems=Array.isArray(data.rascunho?.itens)?data.rascunho.itens:[];
+  state.plannerVersion=data.rascunho?.versao??null;
+  state.plannerDirty=false;state.plannerError=false;
+  render();return true;
+}
 async function boot() {
   if(!isReady()) {render();return;}
   if (await enforceInactivity()) return;
@@ -560,10 +588,12 @@ async function boot() {
     } catch { /* se QR expirou, pessoa pode inserir um novo código */ }
   }
   if(state.user && canWork()) {
+    await loadData();
+    await loadKids({silent:true});
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
-    await loadData();
-    await loadKids({silent:true});render();
+    if(state.tab==='planejamento'&&canPlan())await loadPlanner();
+    render();
   } else if(state.user && state.family?.status==='ativo') {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab))state.tab='family';
@@ -649,13 +679,16 @@ async function handleForm(form) {
          !Number.isInteger(min)||!Number.isInteger(max)||min<0||max>215||max<min)
         throw new Error('Verifique o nome e os limites etários da turma.');
       const existing=state.kidsClasses.find(x=>x.posicao===pos);
-      const {error}=existing
+      // RLS UPDATE pode afetar zero linhas SEM erro: exigir retorno da linha alterada.
+      const {data,error}=existing
         ?await sb.from('turmas_kids').update({nome,idade_min_meses:min,idade_max_meses:max,
-          alterada_em:new Date().toISOString()}).eq('id',existing.id)
-        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,idade_max_meses:max});
-      if(error)throw new Error('Não foi possível salvar esta turma. Verifique as permissões.');
+          alterada_em:new Date().toISOString()}).eq('id',existing.id).select('id,nome').maybeSingle()
+        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,
+          idade_max_meses:max}).select('id,nome').maybeSingle();
+      if(error||!data||data.nome!==name)
+        throw new Error('A turma não foi alterada. Verifique a autorização e tente novamente.');
       await loadKids({silent:true});
-      notify('Turma atualizada.');
+      notify('Nome e faixa etária da turma salvos com sucesso.');
     } else if(id==='kids-child-team'||id==='kids-child-family') {
       const name=val('kid-child-name').replace(/\s+/g,' '),dob=val('kid-child-dob');
       const classId=val('kid-child-class');
@@ -804,6 +837,27 @@ async function confirmAction() {
       if(error)throw new Error('Não foi possível alterar a permissão.');
       await loadKids({silent:true});
       notify(granted?'Permissão revogada.':'Permissão concedida.');
+    } else if(m.action==='planner-regenerate'){
+      if(!canPlan()||!state.plannerBase||state.plannerBase.rascunho?.estado==='aprovado')
+        throw new Error('Sem permissão para recalcular esta escala.');
+      state.plannerItems=createSuggestion(state.plannerBase);
+      state.plannerDirty=true;
+      notify('Sugestão recalculada. Revise as vagas e salve o rascunho.');
+    } else if(m.action==='planner-reload'){
+      await loadPlanner();notify('Rascunho salvo recarregado.');
+    } else if(m.action==='planner-approve-confirm'){
+      if(!canPublishPlan()||!state.plannerBase||state.plannerVersion==null||state.plannerDirty)
+        throw new Error('Salve a versão atual antes de aprovar.');
+      const stats=summaryFor(state.plannerItems,state.plannerBase);
+      if(stats.gaps||stats.timesMissing||!stats.total)
+        throw new Error('Há vagas ou horários pendentes. Confira a planilha.');
+      const {data,error}=await sb.rpc('kids_aprovar_sugestao',{
+        p_mes:state.plannerBase.mes,p_versao:state.plannerVersion
+      });
+      if(error||!Number.isInteger(data))throw new Error('A aprovação não foi concluída. Recarregue e confira se o rascunho está atualizado.');
+      await loadPlanner();
+      if(isLeader())await loadData({silent:true});
+      notify(data+' designações publicadas. A equipe já pode visualizar sua escala.');
     } else if(m.action==='kids-approve-family') {
       const {error}=await sb.rpc('kids_aprovar_familia',{p_responsavel:m.id});
       if(error)throw new Error('Não foi possível aprovar este responsável.');
@@ -836,6 +890,10 @@ async function confirmAction() {
     } else if(m.action==='discard-draft-tab') {
       state.availabilityDraft=null;state.availabilitySuccess=false;
       state.tab=m.id;
+    } else if(m.action==='discard-planner-out') {
+      state.plannerItems=[];state.plannerDirty=false;
+      await sb.auth.signOut({scope:'global'});
+      state.user=null;state.profile=null;clearPrivateKidsState();state.auth='login';forgetHumanActivity();
     } else if(m.action==='discard-draft-out') {
       state.availabilityDraft=null;state.availabilitySuccess=false;
       await sb.auth.signOut({scope:'global'});
@@ -898,6 +956,49 @@ async function actionClick(b) {
     modal('Registrar consentimento',
       'Confirma que leu e aceita o termo versão '+state.kidsTerm.versao+
       ' para o cadastro desta criança?','family-confirm-child',id);return;}
+  if(a==='planner-open'){
+    if(!canPlan())return;
+    state.tab='planejamento';render();await loadPlanner();$('#main').scrollTop=0;return;
+  }
+  if(a==='planner-refresh'){
+    if(!canPlan())return;
+    if(state.plannerDirty){
+      modal('Descartar rascunho não salvo','Recarregar a escala salva e perder alterações locais?','planner-reload');return;
+    }
+    await loadPlanner();return;
+  }
+  if(a==='planner-generate'){
+    if(!canPlan()||!state.plannerBase||state.plannerBase.rascunho?.estado==='aprovado')return;
+    if(state.plannerItems.length){
+      modal('Recalcular sugestão','A nova distribuição substituirá as designações do rascunho atual. Confirma?','planner-regenerate');return;
+    }
+    try{state.plannerItems=createSuggestion(state.plannerBase);state.plannerDirty=true;render();
+      notify('Sugestão gerada. Revise as vagas e os horários.');}
+    catch(e){notify(showError(e),true);}
+    return;
+  }
+  if(a==='planner-save'){
+    if(!canPlan()||!state.plannerBase||!state.plannerDirty||state.busy)return;
+    state.busy=true;render();
+    try{
+      const {data,error}=await sb.rpc('kids_salvar_sugestao',{
+        p_mes:state.plannerBase.mes,p_itens:state.plannerItems,p_versao:state.plannerVersion
+      });
+      if(error||!Number.isInteger(data))throw new Error('Não foi possível salvar. Outro gestor pode ter alterado o rascunho. Recarregue antes de tentar novamente.');
+      await loadPlanner();notify('Rascunho compartilhado com a liderança. Nenhuma escala foi publicada.');
+    }catch(e){notify(showError(e),true);}finally{state.busy=false;render();}
+    return;
+  }
+  if(a==='planner-approve'){
+    if(!canPublishPlan()||state.plannerDirty||state.plannerVersion==null)return;
+    const stats=summaryFor(state.plannerItems,state.plannerBase);
+    if(stats.gaps||stats.timesMissing||!stats.total){notify('Preencha todas as vagas e horários antes da aprovação.',true);return;}
+    modal('Aprovar escala do mês',
+      'Publicar '+stats.assigned+' designações para '+state.plannerBase.mes+
+      '? Esta ação altera a escala oficial dos voluntários e não pode ser desfeita em lote.',
+      'planner-approve-confirm');
+    return;
+  }
   if(a==='agenda-open'){state.tab='escala';render();$('#main').scrollTop=0;return;}
   if(a==='agenda-refresh'){await loadData();return;}
   if(a==='agenda-day'){
@@ -953,12 +1054,13 @@ async function actionClick(b) {
     const target=b.dataset.tab;
     if(target===state.tab)return;
     state.tab=target;state.currentInvitation=null;if(target!=='kids')state.kidsInviteCode='';
-    const refresh=(target==='aprov' && canApprove()) || target==='escala';
+    const refresh=(target==='aprov' && canApprove()) || target==='escala' || (target==='planejamento'&&canPlan());
     state.loadingTab=refresh;
     renderScreenTransition();
     $('#main').scrollTop=0;
     if(refresh){
-      await loadData({silent:true});
+      if(target==='planejamento')await loadPlanner();
+      else await loadData({silent:true});
       state.loadingTab=false;
       renderScreenTransition();
     }
@@ -972,6 +1074,9 @@ async function actionClick(b) {
   if(a==='cancel'){state.modal=null;render();return;}
   if(a==='confirm'){await confirmAction();return;}
   if(a==='out'){
+    if(state.plannerDirty){
+      modal('Escala sugerida não salva','Sair da conta e descartar as alterações locais?', 'discard-planner-out');return;
+    }
     if(state.availabilitySaving){notify('Conclua o envio antes de sair.',true);return;}
     if(availabilityDirty()){
       modal('Rascunho não enviado','Sair da conta e descartar estas alterações?','discard-draft-out');return;
@@ -1027,6 +1132,31 @@ $('#app').addEventListener('pointerdown',e=>{
 ['pointerup','pointercancel'].forEach(type=>$('#app').addEventListener(type,()=>{
   setTimeout(()=>$('#nav').querySelectorAll('.pressing').forEach(x=>x.classList.remove('pressing')),90);
 },{passive:true}));
+$('#app').addEventListener('change',e=>{
+  if(state.tab!=='planejamento'||!canPlan()||!state.plannerBase||
+     state.plannerBase.rascunho?.estado==='aprovado')return;
+  const node=e.target;
+  if(node.matches('select[data-planner-person]')){
+    const idx=Number(node.dataset.plannerPerson);
+    const current=state.plannerItems[idx];
+    if(!current)return;
+    const chosen=node.value;
+    if(chosen&&!candidatePeople(current,state.plannerBase,state.plannerItems).some(p=>p.id===chosen)){
+      notify('Este voluntário não está disponível ou já ocupa outra vaga no culto.',true);render();return;
+    }
+    current.pessoa_id=chosen||null;state.plannerDirty=true;render();return;
+  }
+  if(node.matches('input[data-planner-time]')){
+    const key=node.dataset.plannerTime,time=node.value||null;
+    if(time&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){
+      notify('Horário inválido.',true);render();return;
+    }
+    for(const item of state.plannerItems){
+      if(serviceKey(item)===key)item.horario=time;
+    }
+    state.plannerDirty=true;render();
+  }
+});
 $('#app').addEventListener('submit', async e=>{const form=e.target.closest('form[data-form]');if(!form)return;e.preventDefault();await handleForm(form);});
 $('#app').addEventListener('click', async e=>{const b=e.target.closest('button[data-a]');if(!b||b.disabled)return;await actionClick(b);});
 
@@ -1050,7 +1180,7 @@ const captureActivity = () => {
 };
 window.addEventListener('pointerdown',captureActivity,{passive:true});
 window.addEventListener('beforeunload', event=>{
-  if(availabilityDirty()){event.preventDefault();event.returnValue='';}
+  if(availabilityDirty()||state.plannerDirty){event.preventDefault();event.returnValue='';}
 });
 window.addEventListener('keydown',captureActivity);
 window.addEventListener('focus',() => {

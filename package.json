@@ -1,7 +1,7 @@
 {
   "name": "escala-kids-testes",
   "private": true,
-  "version": "1.2.6-qa",
+  "version": "1.2.7-qa",
   "scripts": {
     "test": "node --test testes/*.test.cjs",
     "test:unit": "node --test testes/validacoes.test.cjs testes/contratos.test.cjs",

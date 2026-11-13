@@ -1,6 +1,8 @@
 // Escala Kids · Fase 3 PR2. Interface puramente declarativa, sem gravar dados.
 export const KIDS_PERMISSIONS={
   gerenciar_turmas:'Gerenciar turmas',
+  montar_escalas:'Montar escala sugerida',
+  aprovar_escalas:'Aprovar e publicar escala',
   cadastrar_criancas:'Cadastrar crianças',
   confirmar_cadastros:'Confirmar cadastros',
   gerenciar_vinculos:'Vincular responsáveis',
@@ -36,16 +38,17 @@ export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,
  if(canManageClasses) {
   for(let pos=1;pos<=4;pos++){
     const t=classes.find(x=>x.posicao===pos);
-    out+=`<div class="card"><h3>Turma ${pos}</h3>
+    out+=`<div class="card"><h3>Turma fixa ${pos} ${t?'<span class="tag">Permanente</span>':''}</h3>
+    <p class="mut">O nome e a idade são editáveis. As pessoas são definidas na escala de cada culto.</p>
     <form data-form="kids-class" class="kids-form">
       <input type="hidden" name="kid-pos" value="${pos}">
-      <label>Nome <input class="in" name="kid-class-name" maxlength="60" minlength="2" required
+      <label>Nome da turma (editável) <input class="in" name="kid-class-name" maxlength="60" minlength="2" required
       value="${safe(t?.nome||'',esc)}" placeholder="Nome oficial"></label>
       <div class="kids-two"><label>Idade inicial (meses)
       <input class="in" name="kid-min" type="number" min="0" max="215" required value="${t?.idade_min_meses??''}"></label>
       <label>Idade final (meses)
       <input class="in" name="kid-max" type="number" min="0" max="215" required value="${t?.idade_max_meses??''}"></label></div>
-      <button type="submit" class="btn ghost">${t?'Salvar turma':'Criar turma'}</button>
+      <button type="submit" class="btn ghost">${t?'Salvar novo nome e faixa etária':'Cadastrar nome desta turma'}</button>
     </form></div>`;
   }
  } else out+=classes.map(t=>`<div class="card"><strong>${safe(t.nome,esc)}</strong><p class="mut">${t.idade_min_meses} a ${t.idade_max_meses} meses</p></div>`).join('');
