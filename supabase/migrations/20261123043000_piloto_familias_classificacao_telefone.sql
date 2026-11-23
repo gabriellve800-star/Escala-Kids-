@@ -151,4 +151,18 @@ begin
   return query select crianca_id,codigo,est;
 end $$;
 
+
+-- The pastor who leads Kids may configure classes like the ADM.
+-- Delegated staff only receive the specific gerenciar_turmas scope.
+drop policy if exists turmas_inserir on public.turmas_kids;
+drop policy if exists turmas_editar on public.turmas_kids;
+create policy turmas_inserir on public.turmas_kids for insert to authenticated
+  with check ((select private.lider_ativo())
+    or (select private.tem_permissao_kids('gerenciar_turmas')));
+create policy turmas_editar on public.turmas_kids for update to authenticated
+  using ((select private.lider_ativo())
+    or (select private.tem_permissao_kids('gerenciar_turmas')))
+  with check ((select private.lider_ativo())
+    or (select private.tem_permissao_kids('gerenciar_turmas')));
+
 commit;
