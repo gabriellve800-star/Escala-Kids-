@@ -692,8 +692,10 @@ async function handleForm(form) {
          !state.kidsClasses.some(t=>t.id===classId&&t.ativa))
         throw new Error('Verifique os dados e a turma.');
       if(!state.kidsTerm)throw new Error('Termo não publicado. Cadastro bloqueado.');
-      if(id==='kids-child-family'&&!form.querySelector('[name="kid-accept"]')?.checked)
-        throw new Error('É necessário ler e aceitar o termo.');
+      if(id==='kids-child-family'&&(
+        !form.querySelector('[name="kid-accept"]')?.checked||
+        !form.querySelector('[name="kid-legal-guardian"]')?.checked))
+        throw new Error('Confirme que é responsável legal e aceite o termo de cadastro.');
       const {data,error}=await sb.rpc('kids_criar_crianca',{
         p_nome:name,p_nascimento:dob,p_turma:classId,p_versao:state.kidsTerm.versao,
         p_aceite:id==='kids-child-family'
