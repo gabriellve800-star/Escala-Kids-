@@ -186,7 +186,8 @@ export function familyPortalUI({family,classes,children,links,requests,term,esc,
    <label>Nome da criança<input class="in" name="kid-child-name" required minlength="2" maxlength="120"></label>
    <label>Data de nascimento<input class="in" name="kid-child-dob" type="date" data-kid-birth required></label>
    <label>Turma indicada pela idade</label>${roomSelector()}
-   <label class="kids-consent"><input type="checkbox" name="kid-accept" required> Li e aceito o termo de cadastro, versão ${safe(term.versao,esc)}.</label>
+   <label class="kids-consent"><input type="checkbox" name="kid-legal-guardian" required> Declaro que sou pai, mãe ou responsável legal autorizado e que as informações são verdadeiras.</label>
+ <label class="kids-consent"><input type="checkbox" name="kid-accept" required> Li e aceito o termo de cadastro, versão ${safe(term.versao,esc)}.</label>
    <button class="btn pri" type="submit">Solicitar cadastro</button>
   </form></div>`;
  out+='<div class="card"><p class="mut">As chamadas ao responsável e o botão “Estou indo” serão disponibilizados na próxima etapa. Por enquanto, acompanhe os comunicados pelos meios habituais.</p></div>';
