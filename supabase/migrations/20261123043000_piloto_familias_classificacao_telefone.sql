@@ -120,7 +120,7 @@ begin
     (now() at time zone 'America/Sao_Paulo')::date,p_nascimento))*12
      + extract(month from pg_catalog.age(
     (now() at time zone 'America/Sao_Paulo')::date,p_nascimento)))::integer;
-  select count(*),min(t.id) into matches,sugerida
+  select count(*),(array_agg(t.id order by t.posicao))[1] into matches,sugerida
     from public.turmas_kids t
     where t.ativa and idade_meses between t.idade_min_meses and t.idade_max_meses;
   if matches=0 then raise exception 'IDADE_SEM_TURMA';end if;
