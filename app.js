@@ -6,7 +6,8 @@ import { config } from './config.js';
 import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.6';
 import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
 import { syncNavigation } from './navigation.js?v=1.2.5';
-import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.6';
+import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.8';
+import { suggestedClass, dateInSaoPaulo } from './kids-age.js?v=1.2.8';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -100,10 +101,12 @@ async function enforceInactivity() {
 }
 const params = new URLSearchParams(location.search);
 const rawInvite = params.get('convite');
+const familyEntry = params.get('familia')==='1';
+const publicFamilyEntryLink = () => location.origin+location.pathname+'?familia=1';
 // Não deixa tokens de convite no histórico depois de carregar a página.
-if (rawInvite) history.replaceState(null, '', location.pathname);
+if (rawInvite || familyEntry) history.replaceState(null, '', location.pathname);
 const state = {
-  user:null, profile:null, auth:rawInvite?TOK.signup:TOK.login,
+  user:null, profile:null, auth:rawInvite?TOK.signup:(familyEntry?'family-signup':TOK.login),
   invitation:normalizeInvite(rawInvite) || '', inviteVerified:false, people:[], functions:[], invites:[], audit:[],
   tab:'inicio', drafts:{}, modal:null, busy:false, toast:'', error:'',
   currentInvitation:null, pendingCount:0, demoTheme:'',
@@ -142,7 +145,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.6</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.8</small>');
   }
   $('#seg').innerHTML=state.user && (canWork()||state.family?.status==='ativo')
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -289,6 +292,19 @@ function paintInviteQR() {
     box.textContent='Não foi possível gerar o QR. Use o código ou o link.';
   }
 }
+function paintFamilyEntryQR() {
+  const host=document.querySelector('#kids-family-entry-qr');
+  if(!host)return;
+  if(typeof QRCode!=='function'){
+    host.textContent='QR indisponível. Compartilhe o link de cadastro.';return;
+  }
+  try{
+    new QRCode(host,{text:publicFamilyEntryLink(),width:132,height:132,
+      colorDark:'#14213D',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+  }catch{
+    host.textContent='Não foi possível gerar o QR. Compartilhe o link.';
+  }
+}
 function auditUI() {
   if (!isAdmin()) return '<h2>Sem permissão</h2>';
   let h='<h2>Auditoria</h2><p class="mut">Registro das decisões de acesso. Apenas o administrador vê esta página.</p><div style="height:12px"></div>';
@@ -336,9 +352,10 @@ function activeUI() {
     case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
       kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
          families:state.kidsFamilies,term:state.kidsTerm,esc,
-         canManageClasses:isAdmin()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
+         canManageClasses:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
          canRegisterChild:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='cadastrar_criancas'),
-         canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode});
+         canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode,
+         familyEntryLink:publicFamilyEntryLink()});
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
     case 'convites':return invitesUI();
@@ -461,6 +478,7 @@ function render() {
   renderAvailabilityBar();
   renderToast();renderModal();
   paintInviteQR();
+  paintFamilyEntryQR();
 }
 function clearPrivateKidsState() {
   state.family=null;state.kidsChildren=[];state.kidsLinks=[];
@@ -480,7 +498,7 @@ async function readProfile() {
   if(p){state.profile=p;state.family=null;return;}
   state.profile=null;
   // Família é uma identidade própria. Jamais criar um perfil de voluntário fictício.
-  const {data:family,error:fe}=await sb.from('familias_kids').select('usuario_id,nome,status')
+  const {data:family,error:fe}=await sb.from('familias_kids').select('usuario_id,nome,telefone,status')
     .eq('usuario_id',u.user.id).maybeSingle();
   if(fe)throw new Error('Não foi possível verificar o acesso familiar.');
   state.family=family||null;
@@ -523,7 +541,7 @@ async function loadKids({silent=false}={}) {
     sb.rpc('kids_termo_atual'),
   ];
   if(team){
-    tasks.push(sb.rpc('kids_familias_pendentes'));
+    tasks.push(sb.rpc('kids_familias_revisao'));
     tasks.push(sb.from('permissoes_equipe_kids').select('pessoa_id,permissao'));
   } else {
     tasks.push(sb.from('vinculos_kids').select('crianca_id,responsavel_id,status'));
@@ -634,9 +652,11 @@ async function handleForm(form) {
     } else if(id==='family-redeem') {
       if(!state.user||state.profile)throw new Error('Acesso familiar indisponível.');
       const code=val('fr-code').toLowerCase(),name=val('fr-name').replace(/\s+/g,' ');
-      if(!/^[0-9a-f]{64}$/.test(code)||name.length<3||name.length>120)
-        throw new Error('Preencha os dados e seu código familiar.');
-      const {error}=await sb.rpc('kids_resgatar_convite_familia',{p_codigo:code,p_nome:name});
+      const phone=val('fr-phone').replace(/[^0-9]/g,'');
+      if(!/^[0-9a-f]{64}$/.test(code)||name.length<3||name.length>120||
+         !/^[0-9]{10,15}$/.test(phone))
+        throw new Error('Confira nome, telefone com DDD e código individual da família.');
+      const {error}=await sb.rpc('kids_resgatar_convite_familia',{p_codigo:code,p_nome:name,p_telefone:phone});
       if(error)throw new Error('Convite indisponível ou e-mail ainda não confirmado.');
       await readProfile();
       state.auth='family-wait';
@@ -649,16 +669,25 @@ async function handleForm(form) {
          !Number.isInteger(min)||!Number.isInteger(max)||min<0||max>215||max<min)
         throw new Error('Verifique o nome e os limites etários da turma.');
       const existing=state.kidsClasses.find(x=>x.posicao===pos);
-      const {error}=existing
+      const {data,error}=existing
         ?await sb.from('turmas_kids').update({nome,idade_min_meses:min,idade_max_meses:max,
-          alterada_em:new Date().toISOString()}).eq('id',existing.id)
-        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,idade_max_meses:max});
-      if(error)throw new Error('Não foi possível salvar esta turma. Verifique as permissões.');
+          alterada_em:new Date().toISOString()}).eq('id',existing.id).select('id,nome').maybeSingle()
+        :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,
+          idade_max_meses:max}).select('id,nome').maybeSingle();
+      if(error||!data||data.nome!==name)
+        throw new Error('Não foi possível atualizar a turma. Confira as faixas etárias e sua autorização.');
       await loadKids({silent:true});
       notify('Turma atualizada.');
     } else if(id==='kids-child-team'||id==='kids-child-family') {
       const name=val('kid-child-name').replace(/\s+/g,' '),dob=val('kid-child-dob');
+      const chosen=suggestedClass(dob,state.kidsClasses);
       const classId=val('kid-child-class');
+      if(chosen.status!=='ok'||chosen.room?.id!==classId)
+        throw new Error(chosen.status==='sem_turma'
+          ?'Nenhuma turma atende à idade. A liderança precisa ajustar as faixas etárias.'
+          :chosen.status==='ambigua'
+          ?'Duas turmas atendem à idade. Solicite a correção das faixas etárias.'
+          :'Informe uma data de nascimento válida para identificar a turma.');
       if(name.length<2||name.length>120||!/^\d{4}-\d{2}-\d{2}$/.test(dob)||
          !state.kidsClasses.some(t=>t.id===classId&&t.ativa))
         throw new Error('Verifique os dados e a turma.');
