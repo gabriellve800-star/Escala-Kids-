@@ -75,6 +75,8 @@ begin
   end;
   select count(*) into n from public.familias_kids;
   if n<>0 then raise exception 'ERRO: voluntario viu familias';end if;
+  select count(*) into n from public.kids_familias_revisao();
+  if n<>0 then raise exception 'ERRO: voluntario consultou telefones de familias';end if;
   begin
     perform * from public.kids_criar_crianca('Crianca de voluntario','2021-01-01',
       '99999999-9999-4999-8999-000000000001','QA_PR2_DEMO');
@@ -86,6 +88,9 @@ begin
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000001',true);
   val=public.kids_aprovar_familia('88888888-8888-4888-8888-000000000002');
   val=public.kids_aprovar_familia('88888888-8888-4888-8888-000000000003');
+  select count(*) into n from public.kids_familias_revisao()
+    where telefone in ('11988888881','11988888882');
+  if n<>2 then raise exception 'ERRO: lideranca nao consegue revisar contato autorizado';end if;
   -- A escala da turma é escrita atomicamente, mesmo sem conceder acesso infantil fora do dia.
   escalado=public.kids_publicar_escala_turma(
     '88888888-8888-4888-8888-000000000004',
