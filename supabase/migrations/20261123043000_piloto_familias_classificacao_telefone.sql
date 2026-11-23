@@ -81,7 +81,7 @@ grant execute on function public.kids_familias_revisao() to authenticated;
 -- Prevent creating overlapping age bands, even via REST API, if active.
 create function private.kids_bloquear_sobreposicao_turmas()
 returns trigger language plpgsql security definer set search_path=''
-as $
+as $$
 begin
   -- Serializa configurações concorrentes das turmas; a validação não pode perder uma sobreposição.
   perform pg_catalog.pg_advisory_xact_lock(
