@@ -20,7 +20,7 @@ begin
   if uid is null then raise exception 'NAO_AUTENTICADO'; end if;
   if p_codigo is null or p_codigo !~ '^[0-9a-f]{64}$'
     or p_nome is null or char_length(btrim(p_nome)) not between 3 and 120
-    or p_telefone is null or p_telefone !~ '^[0-9]{10,15}
+    or p_telefone is null or p_telefone !~ '^[0-9]{10,15}$'
     then raise exception 'CONVITE_INDISPONIVEL'; end if;
   if not public.limitar_cadastro(
     encode(extensions.digest('resgate-familia:'||uid::text,'sha256'),'hex'),12)
@@ -37,26 +37,6 @@ begin
   if not found then raise exception 'CONVITE_INDISPONIVEL'; end if;
   insert into public.familias_kids(usuario_id,nome,telefone,email_confirmado_em,status)
     values(uid,btrim(p_nome),p_telefone,confirmado,'pendente');
-  insert into public.auditoria(quem,acao,alvo,detalhes)
-    values(uid,'kids_familia_solicitada',uid,'{}'::jsonb);
-  return true;
-end $$;
-    then raise exception 'CONVITE_INDISPONIVEL'; end if;
-  if not public.limitar_cadastro(
-    encode(extensions.digest('resgate-familia:'||uid::text,'sha256'),'hex'),12)
-    then raise exception 'TENTATIVAS_EXCEDIDAS'; end if;
-  if exists(select 1 from public.perfis where id=uid)
-    or exists(select 1 from public.familias_kids where usuario_id=uid)
-    then raise exception 'CONVITE_INDISPONIVEL'; end if;
-  select email_confirmed_at into confirmado from auth.users where id=uid;
-  if confirmado is null then raise exception 'EMAIL_NAO_CONFIRMADO'; end if;
-  update private.convites_familia_kids
-  set usos=usos+1
-  where codigo_hash=encode(extensions.digest(p_codigo,'sha256'),'hex')
-    and not revogado and expira_em>now() and usos<usos_max;
-  if not found then raise exception 'CONVITE_INDISPONIVEL'; end if;
-  insert into public.familias_kids(usuario_id,nome,email_confirmado_em,status)
-    values(uid,btrim(p_nome),confirmado,'pendente');
   insert into public.auditoria(quem,acao,alvo,detalhes)
     values(uid,'kids_familia_solicitada',uid,'{}'::jsonb);
   return true;
