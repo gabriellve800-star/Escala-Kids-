@@ -905,6 +905,22 @@ async function actionClick(b) {
     }
     state.kidsInviteCode=data;render();notify('Convite familiar criado. Copie o código agora.');return;
   }
+  if(a==='kids-copy-family-link'){
+    if(!canApprove())return;
+    try{await navigator.clipboard.writeText(publicFamilyEntryLink());notify('Link do cadastro familiar copiado.');}
+    catch{notify('Use o link exibido na tela para compartilhar.',true);}
+    return;
+  }
+  if(a==='kids-download-family-qr'){
+    if(!canApprove())return;
+    const canvas=document.querySelector('#kids-family-entry-qr canvas');
+    const img=document.querySelector('#kids-family-entry-qr img');
+    const dataUrl=canvas?.toDataURL('image/png')||img?.src;
+    if(!dataUrl){notify('QR indisponível. Compartilhe o link.',true);return;}
+    const link=document.createElement('a');
+    link.href=dataUrl;link.download='Escala-Kids-cadastro-familias.png';
+    document.body.append(link);link.click();link.remove();return;
+  }
   if(a==='kids-copy-invite'){
     if(!state.kidsInviteCode)return;
     try{await navigator.clipboard.writeText(state.kidsInviteCode);notify('Código familiar copiado.');}
@@ -1056,6 +1072,27 @@ $('#app').addEventListener('pointerdown',e=>{
 ['pointerup','pointercancel'].forEach(type=>$('#app').addEventListener(type,()=>{
   setTimeout(()=>$('#nav').querySelectorAll('.pressing').forEach(x=>x.classList.remove('pressing')),90);
 },{passive:true}));
+function updateSuggestedRoom(input){
+  const form=input?.closest('form[data-form="kids-child-family"],form[data-form="kids-child-team"]');
+  if(!form)return;
+  const result=suggestedClass(input.value,state.kidsClasses,dateInSaoPaulo());
+  const hidden=form.querySelector('[name="kid-child-class"]');
+  const output=form.querySelector('[data-kid-room]');
+  if(hidden)hidden.value=result.status==='ok'?result.room.id:'';
+  if(output){
+    output.classList.toggle('kids-room-invalid',result.status!=='ok');
+    output.textContent=result.status==='ok'
+      ?'Turma indicada: '+result.room.nome+' · '+result.ageMonths+' meses completos.'
+      :result.status==='sem_turma'
+        ?'Nenhuma turma atende a essa idade. Solicite à liderança a configuração das faixas etárias.'
+        :result.status==='ambigua'
+          ?'As faixas de duas turmas estão sobrepostas. A liderança precisa corrigir.'
+          :'Informe uma data de nascimento válida para descobrir a turma.';
+  }
+}
+$('#app').addEventListener('change',e=>{
+  if(e.target?.matches('[data-kid-birth]'))updateSuggestedRoom(e.target);
+});
 $('#app').addEventListener('submit', async e=>{const form=e.target.closest('form[data-form]');if(!form)return;e.preventDefault();await handleForm(form);});
 $('#app').addEventListener('click', async e=>{const b=e.target.closest('button[data-a]');if(!b||b.disabled)return;await actionClick(b);});
 
