@@ -44,7 +44,16 @@ begin
     then raise exception 'ERRO: convite familiar inseguro';end if;
   -- Familia A com e-mail supostamente validado na fixture Auth.
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000002',true);
+  begin
+    perform public.kids_resgatar_convite_familia(code_a,'Sem telefone');
+    raise exception 'ERRO: endpoint legado sem telefone foi aceito';
+  exception when others then
+    if SQLERRM<>'ATUALIZACAO_OBRIGATORIA' then raise;end if;
+  end;
   val=public.kids_resgatar_convite_familia(code_a,'Responsavel Artificial A','11988888881');
+  if (select telefone from public.familias_kids
+      where usuario_id='88888888-8888-4888-8888-000000000002')<>'11988888881'
+    then raise exception 'ERRO: telefone não persistido';end if;
   if val is distinct from true then raise exception 'ERRO: falhou resgate A';end if;
   if private.familia_ativa() then raise exception 'ERRO: familia nao aprovada ganhou acesso';end if;
   begin
