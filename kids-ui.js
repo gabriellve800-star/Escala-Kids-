@@ -9,9 +9,10 @@ export const KIDS_PERMISSIONS={
   consultar_saude:'Consultar saúde (auditado, em fase futura)',
 };
 const safe=(v,esc)=>esc(v??'');
-const opts=(turmas,esc)=>turmas.filter(x=>x.ativa).map(t=>
-  `<option value="${safe(t.id,esc)}">${safe(t.nome,esc)} · ${t.idade_min_meses}–${t.idade_max_meses} meses</option>`
-).join('');
+const roomSelector = () => `<input type="hidden" name="kid-child-class" value="">
+ <div class="kids-room-result" data-kid-room role="status" aria-live="polite">
+  Informe a data de nascimento para descobrir a turma correspondente.
+ </div>`;
 const readable=(dia)=>dia?new Date(dia+'T12:00:00').toLocaleDateString('pt-BR'):'—';
 const stateLabel={aguardando_equipe:'Aguardando equipe',consentimento_pendente:'Aguardando consentimento',ativo:'Ativo',inativo:'Inativo'};
 function termsCard(term,esc) {
@@ -63,14 +64,15 @@ export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,
  if(!families.length) out+='<div class="card"><p class="mut">Nenhum responsável acessível ao seu perfil.</p></div>';
  else out+=families.map(f=>`<div class="card"><div class="row"><strong>${safe(f.nome,esc)}</strong>
  <span class="tag ${f.status==='ativo'?'':'warn'}">${f.status==='ativo'?'Ativo':'Aguardando aprovação'}</span></div>
+ <p class="mut kids-family-contact">Contato informado: ${safe(f.telefone||'Não informado',esc)}</p>
  ${f.status==='pendente'?`<button class="btn ghost" data-a="kids-approve-family" data-id="${safe(f.usuario_id,esc)}">Aprovar responsável</button>`:''}</div>`).join('');
  out+=`<h3 class="kids-section">Crianças</h3>`;
  if(term&&classes.some(c=>c.ativa)&&canRegisterChild) {
-   out+=`<div class="card"><h3>Novo cadastro pela equipe</h3><p class="mut">A ficha ficará aguardando o consentimento da família. Nenhum dado de saúde é solicitado aqui.</p>
+   out+=`<div class="card"><h3>Novo cadastro pela equipe</h3><p class="mut">O sistema identificará a turma pela idade e aguardará o consentimento da família. Nenhum dado de saúde é solicitado aqui.</p>
     <form data-form="kids-child-team" class="kids-form">
       <label>Nome da criança<input class="in" name="kid-child-name" minlength="2" maxlength="120" autocomplete="off" required></label>
-      <label>Data de nascimento<input class="in" type="date" name="kid-child-dob" required></label>
-      <label>Turma<select class="in" name="kid-child-class" required>${opts(classes,esc)}</select></label>
+      <label>Data de nascimento<input class="in" type="date" name="kid-child-dob" data-kid-birth required></label>
+      <label>Turma indicada pela idade</label>${roomSelector()}
       <button class="btn pri" type="submit">Criar ficha pendente</button>
     </form></div>`;
  }
@@ -129,6 +131,7 @@ export function familyAccessUI({family,auth,term,esc}){
  if(!family)return `<h2>Confirmar convite familiar</h2><p class="mut">Sua conta deve ter um e-mail confirmado. Digite seu nome e o código familiar fornecido pela equipe. Seu acesso ficará pendente de aprovação.</p>
  <form data-form="family-redeem" class="kids-form">
    <label>Nome completo<input class="in" name="fr-name" minlength="3" maxlength="120" autocomplete="name" required></label>
+   <label>Telefone para contato (com DDD)<input class="in" name="fr-phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(11) 99999-9999" required></label>
    <label>Código familiar<input class="in" name="fr-code" minlength="64" maxlength="64" autocomplete="off" pattern="[0-9a-f]{64}" required></label>
    <button class="btn pri" type="submit">Enviar solicitação</button>
  </form><button class="btn ghost" data-a="out">Sair</button>`;
@@ -151,6 +154,7 @@ export function familyPortalUI({family,classes,children,links,requests,term,esc,
  }
  if(tab==='family-account')return `<h2>Minha conta</h2><div class="card"><h3>${safe(family.nome,esc)}</h3>
  <p class="mut">Perfil: responsável familiar</p><p class="mut">Situação: ${safe(family.status,esc)}</p>
+ <p class="mut">Telefone de cadastro: ${safe(family.telefone||'Não informado',esc)}</p>
  <button class="btn ghost" data-a="out">Sair da conta</button></div>
  <div class="card"><p class="mut">Alertas e dispositivos serão habilitados no PR 3 após testes de Web Push. Este PWA não substitui o telão ou o WhatsApp.</p></div>`;
  let out=`<div class="hero kids-family-hero"><p>Bom dia, ${first}</p><h2>Seus pequenos estão em boas mãos</h2>
@@ -168,11 +172,11 @@ export function familyPortalUI({family,classes,children,links,requests,term,esc,
     `<button class="btn pri" data-a="family-confirm-child" data-id="${safe(c.id,esc)}">Li o termo e confirmo este cadastro</button>`:''}
    </div>`;
  }
- if(term&&classes.some(c=>c.ativa))out+=`<div class="card"><h3>Cadastrar meu filho</h3><p class="mut">Após o envio, a equipe confirmará o cadastro. Não preencha informações de saúde nesta etapa.</p>
+ if(term&&classes.some(c=>c.ativa))out+=`<div class="card"><h3>Cadastrar meu filho</h3><p class="mut">A turma será indicada pela data de nascimento. A equipe confirmará o cadastro antes de ativá-lo. Não informe condições de saúde nesta etapa.</p>
   <form data-form="kids-child-family" class="kids-form">
    <label>Nome da criança<input class="in" name="kid-child-name" required minlength="2" maxlength="120"></label>
-   <label>Data de nascimento<input class="in" name="kid-child-dob" type="date" required></label>
-   <label>Turma<select class="in" name="kid-child-class" required>${opts(classes,esc)}</select></label>
+   <label>Data de nascimento<input class="in" name="kid-child-dob" type="date" data-kid-birth required></label>
+   <label>Turma indicada pela idade</label>${roomSelector()}
    <label class="kids-consent"><input type="checkbox" name="kid-accept" required> Li e aceito o termo de cadastro, versão ${safe(term.versao,esc)}.</label>
    <button class="btn pri" type="submit">Solicitar cadastro</button>
   </form></div>`;
