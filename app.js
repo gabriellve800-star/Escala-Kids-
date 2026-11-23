@@ -620,6 +620,9 @@ async function handleForm(form) {
   if(state.busy)return;
   state.busy=true;renderToast();
   const id=form.dataset.form;
+  let formFailed=false;
+  const submitButton=form.querySelector('button[type="submit"]');
+  if(submitButton)submitButton.disabled=true;
   const val=x=>{const v=form.querySelector(`[name="${x}"]`)?.value||'';
     return ['lp','sp','p1','p2'].includes(x)?v:v.trim();};
   try {
@@ -802,6 +805,7 @@ async function handleForm(form) {
       await loadData();notify('Convite criado. Compartilhe o código ou QR.');
     }
   } catch(e) {
+    formFailed=true;
     if (id==='signup' && e?.field) {
       const campos={usuario:'su',nome:'sn',email:'se',telefone:'sf',senha:'sp',codigo:'sc'};
       form.querySelector('[name="'+campos[e.field]+'"]')?.focus();
@@ -810,9 +814,11 @@ async function handleForm(form) {
   } finally {
     state.busy=false;
     // Não apagar cadastro após erro: permite corrigir o campo sem redigitar tudo.
-    if (id==='signup' && state.auth==='signup' && state.inviteVerified) {
-      const submit=form.querySelector('button[type="submit"]');
-      if (submit) submit.disabled=false;
+    if (formFailed && form.isConnected && (
+        (id==='signup' && state.auth==='signup' && state.inviteVerified) ||
+        ['family-signup','family-redeem','kids-child-family','kids-child-team'].includes(id))) {
+      // Não apagar telefone, data de nascimento e código quando há um erro corrigível.
+      if(submitButton)submitButton.disabled=false;
     } else render();
   }
 }
