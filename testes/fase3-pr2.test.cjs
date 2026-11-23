@@ -72,7 +72,7 @@ test('PR2: delegacao de permissoes e turmas no cadastro',()=>{
  assert.match(ui,/Idade inicial \(meses\)/);
  assert.match(app,/kid-perm-change/);
  assert.match(app,/concedida_por:state\.user\.id/);
- assert.match(app,/isAdmin\(\)\|\|state\.kidsPermissions/);
+ assert.match(app,/isAdmin\(\)\|\|isLeader\(\)\|\|state\.kidsPermissions/);
 });
 test('PR2: escalas vinculam UUID da turma via transacao, e legado preservado',()=>{
  assert.match(agenda,/turmas\.some\(t=>t\.ativa\)/);
