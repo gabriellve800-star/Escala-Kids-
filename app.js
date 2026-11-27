@@ -10,6 +10,7 @@ import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, fami
 import { createSuggestion, plannerUI, candidatePeople, summaryFor,serviceKey } from './planner.js?v=1.2.9';
 import { suggestedClass, dateInSaoPaulo } from './kids-age.js?v=1.2.9';
 import {familyAuthReturn,strongFamilyPassword} from './family-auth.js?v=1.2.9';
+import {attendanceCults,attendanceTeamUI,attendanceFamilyUI} from './attendance.js?v=1.2.9';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -119,6 +120,7 @@ const state = {
   family:null, kidsClasses:[], kidsChildren:[], kidsLinks:[], kidsFamilies:[],
   kidsPermissions:[], kidsRequests:[], kidsTerm:null, kidsInviteCode:'', kidsError:false,
   plannerBase:null,plannerItems:[],plannerVersion:null,plannerDirty:false,plannerError:false,plannerLoading:false,
+  attendanceRows:[],attendanceCulto:'',attendanceLoading:false,attendanceError:false,attendanceRequest:0,
 };
 let sb;
 let recoveryClient=null;
@@ -162,12 +164,12 @@ function renderHeader() {
 }
 function tabs() {
   if (!state.user) return [];
-  if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
+  if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-attendance','Presença','list'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
   if (!canWork()) return [];
-  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['planejamento','Escala sugerida','calendar-check'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
-  if (isLeader()) return [['escala','Escala','cal'],['planejamento','Escala sugerida','calendar-check'],['kids','Kids','users'],['equipe','Equipe','users'],
+  if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['attendance','Presença','list'],['planejamento','Escala sugerida','calendar-check'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
+  if (isLeader()) return [['escala','Escala','cal'],['planejamento','Escala sugerida','calendar-check'],['kids','Kids','users'],['attendance','Presença','list'],['equipe','Equipe','users'],
     ...(canApprove()?[['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['convites','Convites','user']]:[])];
-  return [['escala','Minha Escala','cal'],...(canPlan()?[['planejamento','Escala sugerida','calendar-check']]:[]),...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['inicio','Início','home'],['perfil','Perfil','user']];
+  return [['escala','Minha Escala','cal'],...(canPlan()?[['planejamento','Escala sugerida','calendar-check']]:[]),...(state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id)?[['kids','Kids','users']]:[]),['attendance','Presença','list'],['inicio','Início','home'],['perfil','Perfil','user']];
 }
 function renderNav() {
   syncNavigation($('#nav'),tabs(),state.tab,ico,esc);
@@ -363,6 +365,7 @@ function activeUI() {
       state.plannerError?'<h2>Escala sugerida</h2><div class="alert">Não foi possível carregar a sugestão. A escala publicada permanece intacta.</div><button class="btn ghost" data-a="planner-refresh">Tentar novamente</button>':
       plannerUI({base:state.plannerBase,items:state.plannerItems,dirty:state.plannerDirty,
         version:state.plannerVersion,loading:state.plannerLoading,esc});
+    case 'attendance':return attendanceTeamUI({rows:state.attendanceRows,culto:state.attendanceCulto,day:dateInSaoPaulo(),loading:state.attendanceLoading,error:state.attendanceError,esc});
     case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
       kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
          families:state.kidsFamilies,term:state.kidsTerm,esc,
@@ -482,7 +485,7 @@ function renderScreenTransition() {
 function render() {
   renderHeader(); renderNav();
   if (state.user && state.family?.status==='ativo') {
-    $('#main').innerHTML=familyPortalUI({family:state.family,classes:state.kidsClasses,children:state.kidsChildren,
+    $('#main').innerHTML=state.tab==='family-attendance'?attendanceFamilyUI({rows:state.attendanceRows,loading:state.attendanceLoading,error:state.attendanceError,esc}):familyPortalUI({family:state.family,classes:state.kidsClasses,children:state.kidsChildren,
       links:state.kidsLinks,requests:state.kidsRequests,term:state.kidsTerm,esc,tab:state.tab});
   } else if(state.user && !state.profile) {
     $('#main').innerHTML=familyAccessUI({family:state.family,auth:state.family?'family-wait':'family-redeem',term:state.kidsTerm,esc});
@@ -495,6 +498,7 @@ function render() {
   paintFamilyEntryQR();
 }
 function clearPrivateKidsState() {
+  state.attendanceRequest++;state.attendanceRows=[];state.attendanceCulto='';state.attendanceLoading=false;state.attendanceError=false;
   state.family=null;state.kidsChildren=[];state.kidsLinks=[];
   state.kidsFamilies=[];state.kidsRequests=[];state.kidsPermissions=[];
   state.kidsTerm=null;state.kidsClasses=[];state.kidsInviteCode='';state.kidsError=false;
@@ -582,6 +586,21 @@ async function loadKids({silent=false}={}) {
   state.kidsError=false;if(!silent)render();
   return true;
 }
+async function loadAttendance(){
+  if(!state.user||(!canWork()&&state.family?.status!=='ativo'))return;
+  const uid=state.user.id,req=++state.attendanceRequest,family=state.family?.status==='ativo';
+  const cults=attendanceCults(dateInSaoPaulo());
+  if(!cults.includes(state.attendanceCulto))state.attendanceCulto=cults[0]||'';
+  state.attendanceRows=[];state.attendanceError=false;state.attendanceLoading=true;render();
+  if(!family&&!state.attendanceCulto){state.attendanceLoading=false;render();return;}
+  try{
+    const result=family?await sb.rpc('kids_presenca_familia'):await sb.rpc('kids_presenca_lista',{p_culto:state.attendanceCulto});
+    if(state.user?.id!==uid||state.attendanceRequest!==req)return;
+    if(result.error||!Array.isArray(result.data))throw Error('Consulta indisponível');
+    state.attendanceRows=result.data;
+  }catch{if(state.user?.id!==uid||state.attendanceRequest!==req)return;state.attendanceError=true;}
+  finally{if(state.user?.id===uid&&state.attendanceRequest===req){state.attendanceLoading=false;render();}}
+}
 async function loadPlanner() {
   if(!sb||!state.user||!canPlan())return false;
   const userId=state.user.id;
@@ -616,11 +635,12 @@ async function boot() {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab)) state.tab=available[0];
     if(state.tab==='planejamento'&&canPlan())await loadPlanner();
+    if(state.tab==='attendance')await loadAttendance();
     render();
   } else if(state.user && state.family?.status==='ativo') {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab))state.tab='family';
-    await loadKids({silent:true});render();
+    await loadKids({silent:true});if(state.tab==='family-attendance')await loadAttendance();render();
   } else render();
 }
 function showError(error) {
@@ -661,7 +681,20 @@ async function handleForm(form) {
   const val=x=>{const v=form.querySelector(`[name="${x}"]`)?.value||'';
     return ['lp','sp','p1','p2','fl-password','fs-password','reset-password','reset-confirm'].includes(x)?v:v.trim();};
   try {
-    if(id==='family-forgot'||id==='family-resend'){
+    if(id==='attendance-register'){
+      if(!canWork()||state.tab!=='attendance'||!state.attendanceCulto)throw Error('Sem autorização para presença.');
+      const action=val('attendance-action'),child=val('attendance-child');
+      const row=state.attendanceRows.find(x=>x.crianca_id===child);
+      if(!row||!['entrada','saida'].includes(action))throw Error('Atualize a lista de presença.');
+      const guardian=val('attendance-guardian')||null,checked=!!form.querySelector('[name="attendance-checked"]')?.checked;
+      if(action==='saida'&&(!checked||!guardian||!row.responsaveis?.some(g=>g.id===guardian)))throw Error('Confirme a identidade presencial do responsável.');
+      const {data,error}=await sb.rpc('kids_presenca_registrar',{p_crianca:child,p_culto:state.attendanceCulto,p_acao:action,p_responsavel:guardian,p_conferido:checked});
+      if(error||!data){
+        const msg=error?.message||'';
+        throw Error(msg.includes('PRESENCA_ABERTA_ANTERIOR')?'Há uma presença anterior aberta. Acione a liderança.':msg.includes('CADASTRO_OU_CONSENTIMENTO_PENDENTE')?'Cadastro ou consentimento pendente. Acione a liderança.':'Não foi possível registrar. Atualize a lista e confira com a liderança.');
+      }
+      await loadAttendance();notify(action==='entrada'?'Entrada registrada.':'Saída registrada após conferência.');
+    } else if(id==='family-forgot'||id==='family-resend'){
       const email=val('family-mail').toLowerCase();
       if(!emailValido(email))throw new Error('Confira seu e-mail.');
       const result=id==='family-forgot'
@@ -986,6 +1019,8 @@ async function actionClick(b) {
   if(a==='kids-back'){state.tab=isAdmin()?'pessoas':isLeader()?'equipe':'perfil';
     state.kidsInviteCode='';render();return;}
   if(a==='kids-refresh'){await loadKids();return;}
+  if(a==='attendance-refresh'){await loadAttendance();return;}
+  if(a==='attendance-culto'){if(state.busy||!canWork()||!attendanceCults(dateInSaoPaulo()).includes(id))return;state.attendanceCulto=id;await loadAttendance();return;}
   if(a==='kids-invite-family'){
     if(!canWork()||!canApprove())return;
     const {data,error}=await sb.rpc('kids_emitir_convite_familia',{p_dias:7});
@@ -1131,6 +1166,7 @@ async function actionClick(b) {
     if(target===state.tab)return;
     state.tab=target;state.currentInvitation=null;if(target!=='kids')state.kidsInviteCode='';
     const refresh=(target==='aprov' && canApprove()) || target==='escala' || (target==='planejamento'&&canPlan());
+    if(target==='attendance'||target==='family-attendance'){state.loadingTab=false;await loadAttendance();return;}
     state.loadingTab=refresh;
     renderScreenTransition();
     $('#main').scrollTop=0;

@@ -338,3 +338,5 @@ button:disabled {opacity:.56;cursor:not-allowed}
 .kids-public-qr canvas,.kids-public-qr img{max-width:100%!important;height:auto!important}
 .kids-public-url{font:600 11px/1.4 var(--bd);overflow-wrap:anywhere;margin:8px 0;color:var(--mut)}
 @media(max-width:370px){.kids-public-entry{grid-template-columns:1fr}.kids-public-qr{margin-inline:auto}}
+/* Attendance */
+.attendance-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:15px 0}.attendance-kpis>div{display:grid;text-align:center;gap:4px;padding:12px 4px;border:1px solid var(--line);border-radius:14px;background:var(--card)}.attendance-kpis strong{font:800 24px var(--hd)}.attendance-kpis span{font-size:11px;color:var(--mut)}.attendance-card details{margin-top:12px}.attendance-card summary{cursor:pointer;font-weight:700}.attendance-card form{margin-top:10px}
