@@ -1,0 +1,8 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {pathToFileURL}=require('node:url');
+const root=path.resolve(__dirname,'..'),read=p=>fs.readFileSync(path.join(root,p),'utf8'),load=()=>import(pathToFileURL(path.join(root,'attendance.js')).href);
+const esc=x=>String(x).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+test('family called can acknowledge or report arrival without claiming checkout',async()=>{const m=await load();const h=m.attendanceFamilyUI({esc,calls:[{id:'a',nome:'<child>',numero:'TEST',status:'enviado'}]});assert.match(h,/Estou indo/);assert.match(h,/Li o chamado/);assert.match(h,/&lt;child&gt;/);assert.doesNotMatch(h,/<child>/);});
+test('team called exposes scope and closure states without claiming push',async()=>{const m=await load();const row={crianca_id:'a',nome:'Test',numero:'X',turma:'A',estado:'presente',responsaveis:[]};const h=m.attendanceTeamUI({day:'2026-11-29',culto:'domingo_manha',rows:[row],esc});assert.match(h,/Chamar responsável/);assert.match(h,/não há alerta em segundo plano/);const open=m.attendanceTeamUI({day:'2026-11-29',culto:'domingo_manha',rows:[row],calls:[{crianca_id:'a',status:'a_caminho'}],esc});assert.match(open,/está a caminho/);assert.match(open,/Cancelar chamado/);});
+test('calls server guards ownership, duplicate calls and state monotonicity',()=>{const s=read('supabase/migrations/20261127195548_v130_chamados_in_app.sql');assert.match(s,/responsavel_id=uid/);assert.match(s,/CHAMADO_ABERTO/);assert.match(s,/familia_vinculada_kids/);assert.match(s,/for update/);assert.match(s,/kids_chamados_na_saida/);assert.doesNotMatch(s,/create function public\.[^;]*security definer/i);});

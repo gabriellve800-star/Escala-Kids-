@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [feature/v130-presenca-kids]
+    branches: [feature/v130-presenca-kids, feature/v130-chamados-kids]
   workflow_dispatch:
 permissions:
   contents: read

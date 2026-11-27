@@ -206,6 +206,6 @@ export function familyPortalUI({family,classes,children,links,requests,term,esc,
  <label class="kids-consent"><input type="checkbox" name="kid-accept" required> Li e aceito o termo de cadastro, versão ${safe(term.versao,esc)}.</label>
    <button class="btn pri" type="submit">Solicitar cadastro</button>
   </form></div>`;
- out+='<div class="card"><p class="mut">As chamadas ao responsável e o botão “Estou indo” serão disponibilizados na próxima etapa. Por enquanto, acompanhe os comunicados pelos meios habituais.</p></div>';
+ out+='<div class="card"><p class="mut">Consulte a aba Presença para chamados da equipe e o botão “Estou indo”. O aplicativo precisa estar aberto para consultar novos chamados; acompanhe também os meios habituais.</p></div>';
  return out;
 }
