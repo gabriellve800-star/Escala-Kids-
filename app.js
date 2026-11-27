@@ -121,6 +121,7 @@ const state = {
   kidsPermissions:[], kidsRequests:[], kidsTerm:null, kidsInviteCode:'', kidsError:false,
   plannerBase:null,plannerItems:[],plannerVersion:null,plannerDirty:false,plannerError:false,plannerLoading:false,
   attendanceRows:[],attendanceCulto:'',attendanceLoading:false,attendanceError:false,attendanceRequest:0,
+  attendanceCalls:[],attendanceCallsError:false,
 };
 let sb;
 let recoveryClient=null;
@@ -164,7 +165,7 @@ function renderHeader() {
 }
 function tabs() {
   if (!state.user) return [];
-  if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-attendance','Presença','list'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
+  if (state.family?.status==='ativo') return [['family','Meus filhos','users'],['family-attendance',state.attendanceCalls.length?'Presença ('+state.attendanceCalls.length+')':'Presença','list'],['family-privacy','Privacidade','list'],['family-account','Conta','user']];
   if (!canWork()) return [];
   if (isAdmin()) return [['aprov',`Aprovações${state.pendingCount ? ` (${state.pendingCount})` : ''}`,'list'],['pessoas','Pessoas','users'],['kids','Kids','users'],['attendance','Presença','list'],['planejamento','Escala sugerida','calendar-check'],['escala','Escalas','cal'],['convites','Convites','users'],['auditoria','Auditoria','user']];
   if (isLeader()) return [['escala','Escala','cal'],['planejamento','Escala sugerida','calendar-check'],['kids','Kids','users'],['attendance','Presença','list'],['equipe','Equipe','users'],
@@ -365,7 +366,7 @@ function activeUI() {
       state.plannerError?'<h2>Escala sugerida</h2><div class="alert">Não foi possível carregar a sugestão. A escala publicada permanece intacta.</div><button class="btn ghost" data-a="planner-refresh">Tentar novamente</button>':
       plannerUI({base:state.plannerBase,items:state.plannerItems,dirty:state.plannerDirty,
         version:state.plannerVersion,loading:state.plannerLoading,esc});
-    case 'attendance':return attendanceTeamUI({rows:state.attendanceRows,culto:state.attendanceCulto,day:dateInSaoPaulo(),loading:state.attendanceLoading,error:state.attendanceError,esc});
+    case 'attendance':return attendanceTeamUI({rows:state.attendanceRows,culto:state.attendanceCulto,day:dateInSaoPaulo(),loading:state.attendanceLoading,error:state.attendanceError,calls:state.attendanceCalls,callsError:state.attendanceCallsError,esc});
     case 'kids':return state.kidsError?'<h2>Kids</h2><div class="alert">Não foi possível carregar os dados infantis.</div><button class="btn ghost" data-a="kids-refresh">Tentar novamente</button>':
       kidsTeamUI({isAdmin:isAdmin(),isLeader:isLeader(),classes:state.kidsClasses,children:state.kidsChildren,
          families:state.kidsFamilies,term:state.kidsTerm,esc,
@@ -485,7 +486,7 @@ function renderScreenTransition() {
 function render() {
   renderHeader(); renderNav();
   if (state.user && state.family?.status==='ativo') {
-    $('#main').innerHTML=state.tab==='family-attendance'?attendanceFamilyUI({rows:state.attendanceRows,loading:state.attendanceLoading,error:state.attendanceError,esc}):familyPortalUI({family:state.family,classes:state.kidsClasses,children:state.kidsChildren,
+    $('#main').innerHTML=state.tab==='family-attendance'?attendanceFamilyUI({rows:state.attendanceRows,loading:state.attendanceLoading,error:state.attendanceError,calls:state.attendanceCalls,callsError:state.attendanceCallsError,esc}):familyPortalUI({family:state.family,classes:state.kidsClasses,children:state.kidsChildren,
       links:state.kidsLinks,requests:state.kidsRequests,term:state.kidsTerm,esc,tab:state.tab});
   } else if(state.user && !state.profile) {
     $('#main').innerHTML=familyAccessUI({family:state.family,auth:state.family?'family-wait':'family-redeem',term:state.kidsTerm,esc});
@@ -498,7 +499,7 @@ function render() {
   paintFamilyEntryQR();
 }
 function clearPrivateKidsState() {
-  state.attendanceRequest++;state.attendanceRows=[];state.attendanceCulto='';state.attendanceLoading=false;state.attendanceError=false;
+  state.attendanceRequest++;state.attendanceRows=[];state.attendanceCulto='';state.attendanceLoading=false;state.attendanceError=false;state.attendanceCalls=[];state.attendanceCallsError=false;
   state.family=null;state.kidsChildren=[];state.kidsLinks=[];
   state.kidsFamilies=[];state.kidsRequests=[];state.kidsPermissions=[];
   state.kidsTerm=null;state.kidsClasses=[];state.kidsInviteCode='';state.kidsError=false;
@@ -591,15 +592,42 @@ async function loadAttendance(){
   const uid=state.user.id,req=++state.attendanceRequest,family=state.family?.status==='ativo';
   const cults=attendanceCults(dateInSaoPaulo());
   if(!cults.includes(state.attendanceCulto))state.attendanceCulto=cults[0]||'';
-  state.attendanceRows=[];state.attendanceError=false;state.attendanceLoading=true;render();
+  state.attendanceRows=[];state.attendanceCalls=[];state.attendanceError=false;state.attendanceCallsError=false;state.attendanceLoading=true;render();
   if(!family&&!state.attendanceCulto){state.attendanceLoading=false;render();return;}
   try{
-    const result=family?await sb.rpc('kids_presenca_familia'):await sb.rpc('kids_presenca_lista',{p_culto:state.attendanceCulto});
+    const [result,called]=await Promise.all([
+      family?sb.rpc('kids_presenca_familia'):sb.rpc('kids_presenca_lista',{p_culto:state.attendanceCulto}),
+      family?sb.rpc('kids_chamados_familia'):sb.rpc('kids_chamados_equipe',{p_culto:state.attendanceCulto})
+    ]);
     if(state.user?.id!==uid||state.attendanceRequest!==req)return;
+    state.attendanceCallsError=!!called.error||!Array.isArray(called.data);
+    state.attendanceCalls=state.attendanceCallsError?[]:called.data;
     if(result.error||!Array.isArray(result.data))throw Error('Consulta indisponível');
     state.attendanceRows=result.data;
   }catch{if(state.user?.id!==uid||state.attendanceRequest!==req)return;state.attendanceError=true;}
   finally{if(state.user?.id===uid&&state.attendanceRequest===req){state.attendanceLoading=false;render();}}
+}
+let familyCallsLoading=false;
+async function refreshFamilyCalls(){
+  if(familyCallsLoading||state.busy||state.attendanceLoading||document.hidden||state.family?.status!=='ativo'||!state.user)return;
+  const uid=state.user.id,req=state.attendanceRequest;
+  familyCallsLoading=true;
+  try{
+    const result=await sb.rpc('kids_chamados_familia');
+    if(state.user?.id!==uid||state.attendanceRequest!==req||state.family?.status!=='ativo')return;
+    if(result.error||!Array.isArray(result.data)){
+      state.attendanceCallsError=true;
+      if(state.tab==='family-attendance')render();
+      return;
+    }
+    const changed=JSON.stringify(state.attendanceCalls)!==JSON.stringify(result.data)||state.attendanceCallsError;
+    state.attendanceCalls=result.data;state.attendanceCallsError=false;
+    if(changed){
+      if(state.tab==='family-attendance')render();
+      else renderNav();
+    }
+  }catch{if(state.user?.id===uid&&state.attendanceRequest===req){state.attendanceCallsError=true;if(state.tab==='family-attendance')render();}}
+  finally{familyCallsLoading=false;}
 }
 async function loadPlanner() {
   if(!sb||!state.user||!canPlan())return false;
@@ -640,7 +668,7 @@ async function boot() {
   } else if(state.user && state.family?.status==='ativo') {
     const available=tabs().map(x=>x[0]);
     if(!available.includes(state.tab))state.tab='family';
-    await loadKids({silent:true});if(state.tab==='family-attendance')await loadAttendance();render();
+    await loadKids({silent:true});if(state.tab==='family-attendance')await loadAttendance();else await refreshFamilyCalls();render();
   } else render();
 }
 function showError(error) {
@@ -1020,6 +1048,29 @@ async function actionClick(b) {
     state.kidsInviteCode='';render();return;}
   if(a==='kids-refresh'){await loadKids();return;}
   if(a==='attendance-refresh'){await loadAttendance();return;}
+  if(['attendance-call','attendance-call-end','family-call-response'].includes(a)){
+    if(state.busy||state.attendanceLoading)return;
+    state.busy=true;b.disabled=true;
+    try{
+      let result;
+      if(a==='family-call-response'){
+        if(state.family?.status!=='ativo'||!state.attendanceCalls.some(c=>c.id===id))throw Error('Atualize seus chamados.');
+        if(!['visto','a_caminho'].includes(b.dataset.status))throw Error('Resposta inválida.');
+        result=await sb.rpc('kids_chamado_responder',{p_id:id,p_acao:b.dataset.status});
+      }else{
+        if(!canWork()||state.tab!=='attendance'||!state.attendanceCulto||!state.attendanceRows.some(c=>c.crianca_id===id&&c.estado==='presente'))throw Error('Atualize a lista de presença.');
+        if(a==='attendance-call')result=await sb.rpc('kids_chamar_responsavel',{p_crianca:id,p_culto:state.attendanceCulto});
+        else{
+          if(!['resolvido','cancelado','sem_resposta'].includes(b.dataset.status))throw Error('Ação inválida.');
+          result=await sb.rpc('kids_chamado_encerrar',{p_crianca:id,p_culto:state.attendanceCulto,p_acao:b.dataset.status});
+        }
+      }
+      if(result.error||result.data===null||result.data===false)throw Error('Não foi possível atualizar o chamado. Confira presencialmente com a equipe.');
+      await loadAttendance();notify(a==='attendance-call'?'Chamado registrado no aplicativo. Confirme o contato por outro meio se necessário.':'Chamado atualizado.');
+    }catch(e){notify(e.message||'Falha ao atualizar chamado.',true);}
+    finally{state.busy=false;if(b.isConnected)b.disabled=false;}
+    return;
+  }
   if(a==='attendance-culto'){if(state.busy||!canWork()||!attendanceCults(dateInSaoPaulo()).includes(id))return;state.attendanceCulto=id;await loadAttendance();return;}
   if(a==='kids-invite-family'){
     if(!canWork()||!canApprove())return;
@@ -1359,6 +1410,8 @@ setInterval(async () => {
   state.pendingCount=count;renderNav();
   if (count>0) notify(`${count} cadastro(s) aguardando aprovação.`);
 },45000);
+// Poll only in the foreground; this is not Web Push or guaranteed delivery.
+setInterval(()=>{void refreshFamilyCalls();},15000);
 // PWA: verifica novas versões ao abrir, voltar ao app e periodicamente.
 // A atualização depende de internet e de o navegador buscar o novo service worker.
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
