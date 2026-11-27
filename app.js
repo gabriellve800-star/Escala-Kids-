@@ -9,6 +9,7 @@ import { syncNavigation } from './navigation.js?v=1.2.5';
 import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.9';
 import { createSuggestion, plannerUI, candidatePeople, summaryFor,serviceKey } from './planner.js?v=1.2.9';
 import { suggestedClass, dateInSaoPaulo } from './kids-age.js?v=1.2.9';
+import {familyAuthReturn,strongFamilyPassword} from './family-auth.js?v=1.2.9';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -103,11 +104,13 @@ async function enforceInactivity() {
 const params = new URLSearchParams(location.search);
 const rawInvite = params.get('convite');
 const familyEntry = params.get('familia')==='1';
+let authReturn=familyAuthReturn(location.search,location.hash);
+const familyMailLink=kind=>location.origin+location.pathname+'?familia='+kind;
 const publicFamilyEntryLink = () => location.origin+location.pathname+'?familia=1';
 // Não deixa tokens de convite no histórico depois de carregar a página.
-if (rawInvite || familyEntry) history.replaceState(null, '', location.pathname);
+if (rawInvite || familyEntry || authReturn.kind!=='none') history.replaceState(null, '', location.pathname);
 const state = {
-  user:null, profile:null, auth:rawInvite?TOK.signup:(familyEntry?'family-signup':TOK.login),
+  user:null, profile:null, auth:authReturn.kind==='recovery'?'family-reset-loading':authReturn.kind!=='none'?'family-login':rawInvite?TOK.signup:(familyEntry?'family-signup':TOK.login),
   invitation:normalizeInvite(rawInvite) || '', inviteVerified:false, people:[], functions:[], invites:[], audit:[],
   tab:'inicio', drafts:{}, modal:null, busy:false, toast:'', error:'',
   currentInvitation:null, pendingCount:0, demoTheme:'',
@@ -118,6 +121,8 @@ const state = {
   plannerBase:null,plannerItems:[],plannerVersion:null,plannerDirty:false,plannerError:false,plannerLoading:false,
 };
 let sb;
+let recoveryClient=null;
+let recoveryEmail='';
 let toastTimer;
 const isReady = () => /^https:\/\//.test(config.supabaseUrl || '') &&
   /^(sb_publishable_|eyJ)/.test(config.publishableKey || '') &&
@@ -481,8 +486,8 @@ function render() {
       links:state.kidsLinks,requests:state.kidsRequests,term:state.kidsTerm,esc,tab:state.tab});
   } else if(state.user && !state.profile) {
     $('#main').innerHTML=familyAccessUI({family:state.family,auth:state.family?'family-wait':'family-redeem',term:state.kidsTerm,esc});
-  } else if(!state.user && ['family-login','family-signup','family-email-wait'].includes(state.auth)){
-    $('#main').innerHTML=familyAccessUI({family:null,auth:state.auth,term:state.kidsTerm,esc});
+  } else if(!state.user && ['family-login','family-signup','family-email-wait','family-forgot','family-resend','family-reset-loading','family-reset'].includes(state.auth)){
+    $('#main').innerHTML=familyAccessUI({family:null,auth:state.auth,term:state.kidsTerm,esc,recoveryEmail});
   } else $('#main').innerHTML=state.user && canWork()?activeUI():authUI();
   renderAvailabilityBar();
   renderToast();renderModal();
@@ -654,9 +659,27 @@ async function handleForm(form) {
   const submitButton=form.querySelector('button[type="submit"]');
   if(submitButton)submitButton.disabled=true;
   const val=x=>{const v=form.querySelector(`[name="${x}"]`)?.value||'';
-    return ['lp','sp','p1','p2'].includes(x)?v:v.trim();};
+    return ['lp','sp','p1','p2','fl-password','fs-password','reset-password','reset-confirm'].includes(x)?v:v.trim();};
   try {
-    if(id==='family-login') {
+    if(id==='family-forgot'||id==='family-resend'){
+      const email=val('family-mail').toLowerCase();
+      if(!emailValido(email))throw new Error('Confira seu e-mail.');
+      const result=id==='family-forgot'
+        ?await sb.auth.resetPasswordForEmail(email,{redirectTo:familyMailLink('recuperar')})
+        :await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:familyMailLink('confirmar')}});
+      if(result.error)throw new Error('Não foi possível solicitar o e-mail agora. Aguarde e tente novamente.');
+      state.auth='family-login';
+      notify('Se a conta estiver apta, você receberá um e-mail. Confira também o spam.');
+    } else if(id==='family-reset'){
+      if(!recoveryClient||state.auth!=='family-reset')throw new Error('Abra um novo link de recuperação.');
+      const password=val('reset-password');
+      if(!strongFamilyPassword(password)||password!==val('reset-confirm'))throw new Error('Use uma senha forte e confira a confirmação.');
+      const {error}=await recoveryClient.auth.updateUser({password});
+      if(error)throw new Error('Não foi possível alterar a senha. Solicite um novo link.');
+      await recoveryClient.auth.signOut({scope:'local'}).catch(()=>{});
+      recoveryClient=null;recoveryEmail='';state.auth='family-login';
+      notify('Senha alterada. Entre novamente com a nova senha.');
+    } else if(id==='family-login') {
       const email=val('fl-email').toLowerCase(), password=val('fl-password');
       if(!emailValido(email))throw new Error('Confira seu e-mail.');
       const {error}=await sb.auth.signInWithPassword({email,password});
@@ -675,7 +698,7 @@ async function handleForm(form) {
       if(checked.error||!checked.data)throw new Error('Convite inválido ou encerrado.');
       // A primeira validação não consome o convite. O resgate após verificação é atômico.
       const {error}=await sb.auth.signUp({email,password,options:{
-        emailRedirectTo:location.origin+location.pathname
+        emailRedirectTo:familyMailLink('confirmar')
       }});
       if(error)throw new Error('Não foi possível processar o cadastro. Confira as informações.');
       try{await sb.auth.signOut({scope:'local'});}catch{/* sessão pode não existir */}
@@ -847,7 +870,7 @@ async function handleForm(form) {
     // Não apagar cadastro após erro: permite corrigir o campo sem redigitar tudo.
     if (formFailed && form.isConnected && (
         (id==='signup' && state.auth==='signup' && state.inviteVerified) ||
-        ['family-signup','family-redeem','kids-child-family','kids-child-team'].includes(id))) {
+        ['family-signup','family-redeem','family-forgot','family-resend','family-reset','kids-child-family','kids-child-team'].includes(id))) {
       // Não apagar telefone, data de nascimento e código quando há um erro corrigível.
       if(submitButton)submitButton.disabled=false;
     } else render();
@@ -951,7 +974,9 @@ async function actionClick(b) {
     if (await enforceInactivity()) return;
     await loadData(); notify('Solicitações atualizadas.'); return;
   }
-  if(a==='family-login-tab'){state.auth='family-login';render();return;}
+  if(a==='family-login-tab'){if(recoveryClient){await recoveryClient.auth.signOut({scope:'local'}).catch(()=>{});recoveryClient=null;recoveryEmail='';}state.auth='family-login';render();return;}
+  if(a==='family-forgot-tab'){state.auth='family-forgot';render();return;}
+  if(a==='family-resend-tab'){state.auth='family-resend';render();return;}
   if(a==='family-signup-tab'){state.auth='family-signup';render();return;}
   if(a==='family-refresh'){await boot();notify('Situação conferida.');return;}
   if(a==='kids-open'){
@@ -1238,7 +1263,31 @@ if(isReady()) {
   });
 }
 render();
-boot().then(() => {
+async function startApp(){
+  const received=authReturn;authReturn={kind:'none'};
+  if(received.kind==='recovery'){
+    if(!isReady()){state.auth='family-login';render();return;}
+    const client=createClient(config.supabaseUrl,config.publishableKey,{
+      auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:'escala-kids-recovery-ephemeral'}
+    });
+    try{
+      const {error}=await client.auth.setSession({access_token:received.access_token,refresh_token:received.refresh_token});
+      if(error)throw error;
+      const {data,error:userError}=await client.auth.getUser();
+      if(userError||!data?.user?.email)throw new Error('Link inválido');
+      recoveryClient=client;recoveryEmail=data.user.email;state.auth='family-reset';render();return;
+    }catch{
+      await client.auth.signOut({scope:'local'}).catch(()=>{});
+      state.auth='family-login';render();notify('Link inválido ou expirado. Solicite outro.',true);return;
+    }
+  }
+  if(received.kind==='confirmation'||received.kind==='invalid'){
+    state.auth='family-login';render();
+    notify(received.kind==='confirmation'?'Entre com seu e-mail e senha para continuar.':'Link inválido ou expirado. Solicite outro e-mail.',received.kind==='invalid');return;
+  }
+  await boot();
+}
+startApp().then(() => {
   if (expiredOnStartup) notify('Sessão expirada por 14 dias sem atividade. Entre novamente.');
 }).catch(()=>notify('Não foi possível conectar. Confira sua internet ou a configuração.',true));
 // Somente uma interação humana e a abertura do app renovam os 14 dias.

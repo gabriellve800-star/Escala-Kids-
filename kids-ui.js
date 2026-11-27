@@ -110,7 +110,7 @@ export function kidsTeamUI({isAdmin,isLeader,classes,children,families,term,esc,
  out+=`<div class="card kids-footnote"><strong>Proteção dos pequenos</strong><p class="mut">Dados de saúde e telefone do responsável não são mostrados aqui. A consulta clínica exige controle e auditoria específicos. Cadastro e presença não devem substituir procedimentos de emergência.</p></div>`;
  return out;
 }
-export function familyAccessUI({family,auth,term,esc}){
+export function familyAccessUI({family,auth,term,esc,recoveryEmail=''}){
  if(family && family.status!=='ativo')return `<div class="card"><h2>Cadastro em análise</h2>
   <p class="mut">Seu e-mail foi confirmado. A equipe precisa aprovar seu acesso familiar antes do cadastro de crianças.</p>
   <button class="btn ghost" data-a="family-refresh">Verificar aprovação</button>
@@ -124,6 +124,16 @@ export function familyAccessUI({family,auth,term,esc}){
     <button type="submit" class="btn ghost">Enviar solicitação</button>
    </form></details></div>
   <button class="btn ghost" data-a="out">Sair</button>`;
+ if(auth==='family-reset-loading')return '<h2>Verificando link de recuperação…</h2><p class="mut">Aguarde a validação da conta.</p>';
+ if(auth==='family-reset')return `<h2>Definir nova senha</h2><p class="mut">Confira a conta: ${safe(recoveryEmail,esc)}. Só prossiga se for seu e-mail.</p>
+ <form data-form="family-reset" class="kids-form">
+ <label>Nova senha<input class="in" name="reset-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+ <label>Confirme a senha<input class="in" name="reset-confirm" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+ <p class="mut">Use pelo menos 10 caracteres, com maiúscula, minúscula, número e símbolo.</p>
+ <button class="btn pri" type="submit">Alterar senha</button></form><button class="btn ghost" data-a="family-login-tab">Cancelar</button>`;
+ if(auth==='family-forgot'||auth==='family-resend')return `<h2>${auth==='family-forgot'?'Recuperar senha':'Reenviar confirmação'}</h2><form data-form="${auth}" class="kids-form">
+ <label>E-mail<input class="in" name="family-mail" type="email" autocomplete="email" required></label>
+ <button class="btn pri" type="submit">Solicitar e-mail</button></form><button class="btn ghost" data-a="family-login-tab">Voltar</button>`;
  if(auth==='family-signup')return `<h2>Cadastro de responsável</h2><p class="mut">Você precisa de um convite próprio para famílias. Primeiro confirme seu e-mail. Depois, entre e valide o convite com a equipe.</p>
  <form data-form="family-signup" class="kids-form">
   <label>Código familiar<input class="in" name="fs-code" required minlength="64" maxlength="64" autocomplete="off" pattern="[0-9a-f]{64}" placeholder="Cole seu código de convite"></label>
@@ -136,10 +146,13 @@ export function familyAccessUI({family,auth,term,esc}){
   <label>E-mail<input class="in" name="fl-email" type="email" autocomplete="email" required></label>
   <label>Senha<input class="in" name="fl-password" type="password" autocomplete="current-password" required></label>
   <button class="btn pri" type="submit">Entrar</button>
- </form><button class="btn ghost" data-a="family-signup-tab">Tenho um convite familiar</button>
+ </form><button class="btn ghost" data-a="family-forgot-tab">Esqueci minha senha</button>
+ <button class="btn ghost" data-a="family-resend-tab">Reenviar confirmação</button>
+ <button class="btn ghost" data-a="family-signup-tab">Tenho um convite familiar</button>
  <button class="btn ghost" data-a="login">Entrar como equipe</button>`;
  if(auth==='family-email-wait')return `<div class="card"><h2>Verifique seu e-mail</h2><p class="mut">Confirme a posse do e-mail usando a mensagem enviada pelo Supabase. Depois volte ao Escala Kids, entre como responsável e digite seu código de convite. Não há cadastro infantil antes da aprovação e do termo.</p></div>
- <button class="btn pri" data-a="family-login-tab">Ir para login familiar</button>`;
+ <button class="btn pri" data-a="family-login-tab">Ir para login familiar</button>
+ <button class="btn ghost" data-a="family-resend-tab">Reenviar confirmação</button>`;
  if(!family)return `<h2>Confirmar convite familiar</h2><p class="mut">Sua conta deve ter um e-mail confirmado. Digite seu nome e o código familiar fornecido pela equipe. Seu acesso ficará pendente de aprovação.</p>
  <form data-form="family-redeem" class="kids-form">
    <label>Nome completo<input class="in" name="fr-name" minlength="3" maxlength="120" autocomplete="name" required></label>
