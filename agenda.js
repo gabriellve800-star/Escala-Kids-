@@ -104,6 +104,7 @@ export function leaderAgendaUI({rows=[],availability=[],people=[],turmas=[],labe
    (a.dia+a.culto).localeCompare(b.dia+b.culto));
   const name=id=>people.find(p=>p.id===id)?.nome||'Voluntário';
   return '<h2>Escalas da equipe</h2><p class="mut">Organize os cultos e atribua as turmas aos voluntários.</p>'+
+   '<div class="agenda-planning-link"><button class="btn pri" data-a="planner-open">Abrir escala sugerida do próximo mês</button><p class="mut">Sugestão automática a partir das disponibilidades. A aprovação será manual.</p></div>'+ 
    '<section class="card agenda-panel"><h3>Adicionar escala</h3><form data-form="schedule">'+
    '<div class="field"><label for="agenda-person">Pessoa</label><select class="in" id="agenda-person" name="agenda-person" required>'+
      '<option value="">Selecione um voluntário</option>'+candidates.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nome)+' · '+esc(({voluntario:'Voluntário',lider:'Líder',administrador:'Administrador'})[p.perfil]||'Equipe')+'</option>').join('')+'</select></div>'+
