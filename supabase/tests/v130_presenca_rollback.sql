@@ -162,6 +162,15 @@ end $test$;
 reset role;
 -- Freeze the private attendance calendar only in this rollback transaction.
 create or replace function private.kids_presenca_dia() returns date language sql stable set search_path='' as $$select date '2026-11-29'$$;
+-- Use the same frozen date in the existing shift authorization only inside QA.
+do $freeze$
+declare src text; dst text;
+begin
+ src=pg_get_functiondef('private.escalada_turma_kids(uuid,text)'::regprocedure);
+ dst=replace(src,'(now() at time zone ''America/Sao_Paulo'')::date','private.kids_presenca_dia()');
+ if src=dst then raise exception 'FALHA_FIXTURE_DATA';end if;
+ execute dst;
+end $freeze$;
 set local role authenticated;
 select set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000001',true);
 do $attendance$
@@ -191,6 +200,14 @@ begin
   perform public.kids_presenca_registrar(kid,'domingo_manha','saida',family,true);
   raise exception 'FALHA_VOLUNTARIO_SAIDA';
  exception when others then if sqlerrm<>'SEM_PERMISSAO' then raise;end if;end;
+ -- Grant only one exact service/room by publishing a synthetic shift.
+ perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000001',true);
+ perform public.kids_publicar_escala_turma('88888888-8888-4888-8888-000000000004',date '2026-11-29','domingo_manha','09:00','99999999-9999-4999-8999-000000000001','professor');
+ perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000004',true);
+ rows=public.kids_presenca_lista('domingo_manha');
+ if not exists(select 1 from jsonb_array_elements(rows) j where j->>'crianca_id'=kid::text) or exists(select 1 from jsonb_array_elements(rows) j where j->>'nome'='Crianca Ficticia B') then raise exception 'FALHA_ESCOPO_PROFESSOR';end if;
+ if jsonb_array_length(public.kids_presenca_lista('domingo_noite'))<>0 then raise exception 'FALHA_OUTRO_CULTO';end if;
+ if public.kids_presenca_registrar(kid,'domingo_manha','entrada')<>pres then raise exception 'FALHA_PROFESSOR_ENTRADA';end if;
  perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000003',true);
  if jsonb_array_length(public.kids_presenca_familia())<>0 then raise exception 'FALHA_FAMILIA_B';end if;
  perform pg_catalog.set_config('request.jwt.claim.sub',family::text,true);
