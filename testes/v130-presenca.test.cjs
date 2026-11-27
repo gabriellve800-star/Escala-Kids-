@@ -1,0 +1,10 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {pathToFileURL}=require('node:url');
+const root=path.resolve(__dirname,'..'),read=p=>fs.readFileSync(path.join(root,p),'utf8'),load=()=>import(pathToFileURL(path.join(root,'attendance.js')).href);
+const esc=x=>String(x).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+test('attendance allows only configured worship weekdays',async()=>{const m=await load();assert.deepEqual(m.attendanceCults('2026-11-29'),['domingo_manha','domingo_noite']);assert.deepEqual(m.attendanceCults('2026-12-02'),['quarta_noite']);assert.deepEqual(m.attendanceCults('2026-11-27'),[]);});
+test('attendance count does not label unregistered as absent',async()=>{const m=await load();assert.deepEqual(m.attendanceCounts([{estado:'presente'},{estado:'saiu'},{estado:'nao_registrada'}]),{total:3,present:1,left:1,pending:1});});
+test('attendance UI requires guardian selection and physical check for checkout',async()=>{const m=await load();const h=m.attendanceTeamUI({day:'2026-11-29',culto:'domingo_manha',esc,rows:[{crianca_id:'a',nome:'<A>',numero:'TEST',turma:'A',estado:'presente',responsaveis:[{id:'g',nome:'<G>'}]}]});assert.match(h,/attendance-guardian/);assert.match(h,/attendance-checked/);assert.match(h,/identidade/);assert.match(h,/&lt;G&gt;/);assert.doesNotMatch(h,/<G>/);});
+test('attendance unavailable does not pretend there are no children',async()=>{const m=await load();const h=m.attendanceFamilyUI({error:true,esc});assert.match(h,/Não foi possível/);assert.doesNotMatch(h,/Nenhuma entrada/);});
+test('attendance server-side authorization and audit, no public definer',()=>{const sql=read('supabase/migrations/20261127195252_v130_presenca_por_culto.sql');assert.match(sql,/escalada_turma_kids\(p_turma,p_culto\)/);assert.match(sql,/RESPONSAVEL_NAO_CONFERIDO/);assert.match(sql,/PRESENCA_ABERTA_ANTERIOR/);assert.match(sql,/kids_saida/);assert.match(sql,/familia_vinculada_kids\(c.id\)/);assert.doesNotMatch(sql,/create function public\.[^;]*security definer/i);assert.match(read('sw.js'),/attendance\.js\?v=1\.2\.9/);});
