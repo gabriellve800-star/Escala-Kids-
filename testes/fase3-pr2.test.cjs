@@ -89,14 +89,14 @@ test('PR2: privacidade e proibicao de fotos, dados de saude, push sensivel',()=>
  assert.doesNotMatch(app,/console\.log\(.*(?:kidChild|kidsChildren|email|telefone)/);
  assert.match(sql,/kids_solicitacao_privacidade/);
 });
-test('PR2: cache PWA 1.2.7 e scripts atualizados de forma coerente',()=>{
- assert.match(html,/v1\.2\.7/);
- assert.match(html,/app\.js\?v=1\.2\.7/);
- assert.match(sw,/escala-kids-v1\.2\.7-planejamento/);
- assert.match(sw,/kids-ui\.js\?v=1\.2\.7/);
- assert.match(sw,/agenda\.js\?v=1\.2\.7/);
- assert.match(app,/kids-ui\.js\?v=1\.2\.7/);
- assert.match(app,/agenda\.js\?v=1\.2\.7/);
+test('PR2: cache PWA 1.2.9 e scripts atualizados de forma coerente',()=>{
+ assert.match(html,/v1\.2\.9/);
+ assert.match(html,/app\.js\?v=1\.2\.9/);
+ assert.match(sw,/escala-kids-v1\.2\.9-integrado/);
+ assert.match(sw,/kids-ui\.js\?v=1\.2\.9/);
+ assert.match(sw,/agenda\.js\?v=1\.2\.9/);
+ assert.match(app,/kids-ui\.js\?v=1\.2\.9/);
+ assert.match(app,/agenda\.js\?v=1\.2\.9/);
 });
 
 test('PR2: trocar de conta limpa dados infantis e descarta consultas atrasadas',()=>{

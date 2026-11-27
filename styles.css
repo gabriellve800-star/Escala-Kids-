@@ -284,7 +284,7 @@ button:disabled {opacity:.56;cursor:not-allowed}
 @media(max-width:350px){.kids-two{grid-template-columns:1fr}.kids-section{font-size:18px}}
 @media(prefers-reduced-motion:reduce){.kids-term summary,.kids-perms button{transition:none}}
 
-/* v1.2.7 — planilha editorial de sugestão: hierarquia clara, sem cores adicionais. */
+/* v1.2.9 — planilha editorial de sugestão: hierarquia clara, sem cores adicionais. */
 .agenda-planning-link{display:grid;gap:9px;padding:14px 0 18px}
 .agenda-planning-link .mut{line-height:1.45}
 .planner-head{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;margin:8px 0 18px}
@@ -323,3 +323,18 @@ button:disabled {opacity:.56;cursor:not-allowed}
 .planner-footer{padding:4px 0 20px;font-size:12px}
 @media(min-width:700px){.planner-table{font-size:13px}}
 @media(max-width:350px){.planner-day{font-size:12px}.planner-service-head{gap:7px}.planner-time-label{max-width:93px}.planner-assignee{font-size:10px!important}}
+
+/* Piloto 1.2.9: cadastro familiar assistido, turma calculada, QR público. */
+.kids-room-result{padding:13px 15px;border:1px solid var(--line);background:var(--mint);
+ color:var(--mintink);border-radius:15px;font:600 13px/1.5 var(--bd);overflow-wrap:anywhere}
+.kids-room-result.kids-room-invalid{background:var(--rose);color:var(--roseink);border-color:var(--rose)}
+.kids-family-contact{font-size:12px;margin:3px 0 10px;overflow-wrap:anywhere}
+.kids-public-entry{display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px;
+ align-items:center;padding:12px 0;margin:12px 0;border-top:1px solid var(--line);
+ border-bottom:1px solid var(--line)}
+.kids-public-entry .btn{font-size:12px;padding:10px 12px;margin:6px 0 0}
+.kids-public-qr{width:132px;min-height:132px;display:grid;place-items:center;
+ background:#fff;border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.kids-public-qr canvas,.kids-public-qr img{max-width:100%!important;height:auto!important}
+.kids-public-url{font:600 11px/1.4 var(--bd);overflow-wrap:anywhere;margin:8px 0;color:var(--mut)}
+@media(max-width:370px){.kids-public-entry{grid-template-columns:1fr}.kids-public-qr{margin-inline:auto}}

@@ -3,11 +3,12 @@
 // Funções de escala, check-in e crianças serão conectadas nas próximas fases.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.0?bundle';
 import { config } from './config.js';
-import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.7';
+import { CULTOS, firstMonth, monthDays, nextShift, validSlot, isoLocal, volunteerAgendaUI, leaderAgendaUI, shortTime } from './agenda.js?v=1.2.9';
 import { ownAvailability, toggleSelection, selectionEqual, saveAvailability } from './availability-draft.js?v=1.2.5';
 import { syncNavigation } from './navigation.js?v=1.2.5';
-import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.7';
-import { createSuggestion, plannerUI, candidatePeople, summaryFor,serviceKey } from './planner.js?v=1.2.7';
+import { KIDS_PERMISSIONS, kidsPermissionChips, kidsTeamUI, familyAccessUI, familyPortalUI } from './kids-ui.js?v=1.2.9';
+import { createSuggestion, plannerUI, candidatePeople, summaryFor,serviceKey } from './planner.js?v=1.2.9';
+import { suggestedClass, dateInSaoPaulo } from './kids-age.js?v=1.2.9';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -101,10 +102,12 @@ async function enforceInactivity() {
 }
 const params = new URLSearchParams(location.search);
 const rawInvite = params.get('convite');
+const familyEntry = params.get('familia')==='1';
+const publicFamilyEntryLink = () => location.origin+location.pathname+'?familia=1';
 // Não deixa tokens de convite no histórico depois de carregar a página.
-if (rawInvite) history.replaceState(null, '', location.pathname);
+if (rawInvite || familyEntry) history.replaceState(null, '', location.pathname);
 const state = {
-  user:null, profile:null, auth:rawInvite?TOK.signup:TOK.login,
+  user:null, profile:null, auth:rawInvite?TOK.signup:(familyEntry?'family-signup':TOK.login),
   invitation:normalizeInvite(rawInvite) || '', inviteVerified:false, people:[], functions:[], invites:[], audit:[],
   tab:'inicio', drafts:{}, modal:null, busy:false, toast:'', error:'',
   currentInvitation:null, pendingCount:0, demoTheme:'',
@@ -147,7 +150,7 @@ function renderToast() {
 function renderHeader() {
   const title=$('#app header h1');
   if(title && !title.querySelector('[data-app-version]')) {
-    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.7</small>');
+    title.insertAdjacentHTML('beforeend', '<small data-app-version style="font-size:10px;font-weight:600;letter-spacing:0;margin-left:5px;opacity:.7">v1.2.9</small>');
   }
   $('#seg').innerHTML=state.user && (canWork()||state.family?.status==='ativo')
     ? `<span class="mut" style="padding:0 10px;align-self:center">${esc(first())}</span><button data-a="out" aria-label="Sair da conta">Sair</button>` : '';
@@ -294,6 +297,19 @@ function paintInviteQR() {
     box.textContent='Não foi possível gerar o QR. Use o código ou o link.';
   }
 }
+function paintFamilyEntryQR() {
+  const host=document.querySelector('#kids-family-entry-qr');
+  if(!host)return;
+  if(typeof QRCode!=='function'){
+    host.textContent='QR indisponível. Compartilhe o link de cadastro.';return;
+  }
+  try{
+    new QRCode(host,{text:publicFamilyEntryLink(),width:132,height:132,
+      colorDark:'#14213D',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+  }catch{
+    host.textContent='Não foi possível gerar o QR. Compartilhe o link.';
+  }
+}
 function auditUI() {
   if (!isAdmin()) return '<h2>Sem permissão</h2>';
   let h='<h2>Auditoria</h2><p class="mut">Registro das decisões de acesso. Apenas o administrador vê esta página.</p><div style="height:12px"></div>';
@@ -347,7 +363,8 @@ function activeUI() {
          families:state.kidsFamilies,term:state.kidsTerm,esc,
          canManageClasses:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='gerenciar_turmas'),
          canRegisterChild:isAdmin()||isLeader()||state.kidsPermissions.some(p=>p.pessoa_id===state.user?.id&&p.permissao==='cadastrar_criancas'),
-         canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode});
+         canInviteFamily:canApprove(),inviteCode:state.kidsInviteCode,
+         familyEntryLink:publicFamilyEntryLink()});
     case 'aprov':return approvalsUI();
     case 'pessoas':return peopleUI();
     case 'convites':return invitesUI();
@@ -470,6 +487,7 @@ function render() {
   renderAvailabilityBar();
   renderToast();renderModal();
   paintInviteQR();
+  paintFamilyEntryQR();
 }
 function clearPrivateKidsState() {
   state.family=null;state.kidsChildren=[];state.kidsLinks=[];
@@ -491,7 +509,7 @@ async function readProfile() {
   if(p){state.profile=p;state.family=null;return;}
   state.profile=null;
   // Família é uma identidade própria. Jamais criar um perfil de voluntário fictício.
-  const {data:family,error:fe}=await sb.from('familias_kids').select('usuario_id,nome,status')
+  const {data:family,error:fe}=await sb.from('familias_kids').select('usuario_id,nome,telefone,status')
     .eq('usuario_id',u.user.id).maybeSingle();
   if(fe)throw new Error('Não foi possível verificar o acesso familiar.');
   state.family=family||null;
@@ -534,7 +552,7 @@ async function loadKids({silent=false}={}) {
     sb.rpc('kids_termo_atual'),
   ];
   if(team){
-    tasks.push(sb.rpc('kids_familias_pendentes'));
+    tasks.push(sb.rpc('kids_familias_revisao'));
     tasks.push(sb.from('permissoes_equipe_kids').select('pessoa_id,permissao'));
   } else {
     tasks.push(sb.from('vinculos_kids').select('crianca_id,responsavel_id,status'));
@@ -632,6 +650,9 @@ async function handleForm(form) {
   if(state.busy)return;
   state.busy=true;renderToast();
   const id=form.dataset.form;
+  let formFailed=false;
+  const submitButton=form.querySelector('button[type="submit"]');
+  if(submitButton)submitButton.disabled=true;
   const val=x=>{const v=form.querySelector(`[name="${x}"]`)?.value||'';
     return ['lp','sp','p1','p2'].includes(x)?v:v.trim();};
   try {
@@ -664,9 +685,11 @@ async function handleForm(form) {
     } else if(id==='family-redeem') {
       if(!state.user||state.profile)throw new Error('Acesso familiar indisponível.');
       const code=val('fr-code').toLowerCase(),name=val('fr-name').replace(/\s+/g,' ');
-      if(!/^[0-9a-f]{64}$/.test(code)||name.length<3||name.length>120)
-        throw new Error('Preencha os dados e seu código familiar.');
-      const {error}=await sb.rpc('kids_resgatar_convite_familia',{p_codigo:code,p_nome:name});
+      const phone=val('fr-phone').replace(/[^0-9]/g,'');
+      if(!/^[0-9a-f]{64}$/.test(code)||name.length<3||name.length>120||
+         !/^[0-9]{10,15}$/.test(phone))
+        throw new Error('Confira nome, telefone com DDD e código individual da família.');
+      const {error}=await sb.rpc('kids_resgatar_convite_familia',{p_codigo:code,p_nome:name,p_telefone:phone});
       if(error)throw new Error('Convite indisponível ou e-mail ainda não confirmado.');
       await readProfile();
       state.auth='family-wait';
@@ -686,18 +709,27 @@ async function handleForm(form) {
         :await sb.from('turmas_kids').insert({posicao:pos,nome,idade_min_meses:min,
           idade_max_meses:max}).select('id,nome').maybeSingle();
       if(error||!data||data.nome!==name)
-        throw new Error('A turma não foi alterada. Verifique a autorização e tente novamente.');
+        throw new Error('Não foi possível atualizar a turma. Confira as faixas etárias e sua autorização.');
       await loadKids({silent:true});
       notify('Nome e faixa etária da turma salvos com sucesso.');
     } else if(id==='kids-child-team'||id==='kids-child-family') {
       const name=val('kid-child-name').replace(/\s+/g,' '),dob=val('kid-child-dob');
+      const chosen=suggestedClass(dob,state.kidsClasses);
       const classId=val('kid-child-class');
+      if(chosen.status!=='ok'||chosen.room?.id!==classId)
+        throw new Error(chosen.status==='sem_turma'
+          ?'Nenhuma turma atende à idade. A liderança precisa ajustar as faixas etárias.'
+          :chosen.status==='ambigua'
+          ?'Duas turmas atendem à idade. Solicite a correção das faixas etárias.'
+          :'Informe uma data de nascimento válida para identificar a turma.');
       if(name.length<2||name.length>120||!/^\d{4}-\d{2}-\d{2}$/.test(dob)||
          !state.kidsClasses.some(t=>t.id===classId&&t.ativa))
         throw new Error('Verifique os dados e a turma.');
       if(!state.kidsTerm)throw new Error('Termo não publicado. Cadastro bloqueado.');
-      if(id==='kids-child-family'&&!form.querySelector('[name="kid-accept"]')?.checked)
-        throw new Error('É necessário ler e aceitar o termo.');
+      if(id==='kids-child-family'&&(
+        !form.querySelector('[name="kid-accept"]')?.checked||
+        !form.querySelector('[name="kid-legal-guardian"]')?.checked))
+        throw new Error('Confirme que é responsável legal e aceite o termo de cadastro.');
       const {data,error}=await sb.rpc('kids_criar_crianca',{
         p_nome:name,p_nascimento:dob,p_turma:classId,p_versao:state.kidsTerm.versao,
         p_aceite:id==='kids-child-family'
@@ -804,6 +836,7 @@ async function handleForm(form) {
       await loadData();notify('Convite criado. Compartilhe o código ou QR.');
     }
   } catch(e) {
+    formFailed=true;
     if (id==='signup' && e?.field) {
       const campos={usuario:'su',nome:'sn',email:'se',telefone:'sf',senha:'sp',codigo:'sc'};
       form.querySelector('[name="'+campos[e.field]+'"]')?.focus();
@@ -812,9 +845,11 @@ async function handleForm(form) {
   } finally {
     state.busy=false;
     // Não apagar cadastro após erro: permite corrigir o campo sem redigitar tudo.
-    if (id==='signup' && state.auth==='signup' && state.inviteVerified) {
-      const submit=form.querySelector('button[type="submit"]');
-      if (submit) submit.disabled=false;
+    if (formFailed && form.isConnected && (
+        (id==='signup' && state.auth==='signup' && state.inviteVerified) ||
+        ['family-signup','family-redeem','kids-child-family','kids-child-team'].includes(id))) {
+      // Não apagar telefone, data de nascimento e código quando há um erro corrigível.
+      if(submitButton)submitButton.disabled=false;
     } else render();
   }
 }
@@ -933,6 +968,22 @@ async function actionClick(b) {
       notify('Não foi possível emitir o convite familiar.',true);return;
     }
     state.kidsInviteCode=data;render();notify('Convite familiar criado. Copie o código agora.');return;
+  }
+  if(a==='kids-copy-family-link'){
+    if(!canApprove())return;
+    try{await navigator.clipboard.writeText(publicFamilyEntryLink());notify('Link do cadastro familiar copiado.');}
+    catch{notify('Use o link exibido na tela para compartilhar.',true);}
+    return;
+  }
+  if(a==='kids-download-family-qr'){
+    if(!canApprove())return;
+    const canvas=document.querySelector('#kids-family-entry-qr canvas');
+    const img=document.querySelector('#kids-family-entry-qr img');
+    const dataUrl=canvas?.toDataURL('image/png')||img?.src;
+    if(!dataUrl){notify('QR indisponível. Compartilhe o link.',true);return;}
+    const link=document.createElement('a');
+    link.href=dataUrl;link.download='Escala-Kids-cadastro-familias.png';
+    document.body.append(link);link.click();link.remove();return;
   }
   if(a==='kids-copy-invite'){
     if(!state.kidsInviteCode)return;
@@ -1157,6 +1208,24 @@ $('#app').addEventListener('change',e=>{
     state.plannerDirty=true;render();
   }
 });
+function updateSuggestedRoom(input){
+  const form=input?.closest('form[data-form="kids-child-family"],form[data-form="kids-child-team"]');
+  if(!form)return;
+  const result=suggestedClass(input.value,state.kidsClasses,dateInSaoPaulo());
+  const hidden=form.querySelector('[name="kid-child-class"]');
+  const output=form.querySelector('[data-kid-room]');
+  if(hidden)hidden.value=result.status==='ok'?result.room.id:'';
+  if(output){
+    output.classList.toggle('kids-room-invalid',result.status!=='ok');
+    output.textContent=result.status==='ok'
+      ?'Turma indicada: '+result.room.nome+' · '+result.ageMonths+' meses completos.'
+      :result.status==='sem_turma'
+        ?'Nenhuma turma atende a essa idade. Solicite à liderança a configuração das faixas etárias.'
+        :result.status==='ambigua'
+          ?'As faixas de duas turmas estão sobrepostas. A liderança precisa corrigir.'
+          :'Informe uma data de nascimento válida para descobrir a turma.';
+}
+  if(e.target?.matches('[data-kid-birth]'))updateSuggestedRoom(e.target);
 $('#app').addEventListener('submit', async e=>{const form=e.target.closest('form[data-form]');if(!form)return;e.preventDefault();await handleForm(form);});
 $('#app').addEventListener('click', async e=>{const b=e.target.closest('button[data-a]');if(!b||b.disabled)return;await actionClick(b);});
 

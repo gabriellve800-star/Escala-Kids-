@@ -15,8 +15,8 @@ values
 ('88888888-8888-4888-8888-000000000004','qafase3pr2vol','Voluntario Artificial','11988889999','voluntario','ativo');
 insert into public.turmas_kids(id,posicao,nome,idade_min_meses,idade_max_meses)
 values
-('99999999-9999-4999-8999-000000000001',1,'Turma Teste Um',0,215),
-('99999999-9999-4999-8999-000000000002',2,'Turma Teste Dois',0,215);
+('99999999-9999-4999-8999-000000000001',1,'Turma Teste Um',0,71),
+('99999999-9999-4999-8999-000000000002',2,'Turma Teste Dois',72,215);
 set local role authenticated;
 set local request.jwt.claim.sub='88888888-8888-4888-8888-000000000001';
 
@@ -44,18 +44,27 @@ begin
     then raise exception 'ERRO: convite familiar inseguro';end if;
   -- Familia A com e-mail supostamente validado na fixture Auth.
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000002',true);
-  val=public.kids_resgatar_convite_familia(code_a,'Responsavel Artificial A');
+  begin
+    perform public.kids_resgatar_convite_familia(code_a,'Sem telefone');
+    raise exception 'ERRO: endpoint legado sem telefone foi aceito';
+  exception when others then
+    if SQLERRM<>'ATUALIZACAO_OBRIGATORIA' then raise;end if;
+  end;
+  val=public.kids_resgatar_convite_familia(code_a,'Responsavel Artificial A','11988888881');
+  if (select telefone from public.familias_kids
+      where usuario_id='88888888-8888-4888-8888-000000000002')<>'11988888881'
+    then raise exception 'ERRO: telefone não persistido';end if;
   if val is distinct from true then raise exception 'ERRO: falhou resgate A';end if;
   if private.familia_ativa() then raise exception 'ERRO: familia nao aprovada ganhou acesso';end if;
   begin
-    perform public.kids_resgatar_convite_familia(code_a,'Duplicata');
+    perform public.kids_resgatar_convite_familia(code_a,'Duplicata','11988888881');
     raise exception 'ERRO: permitiu resgate duplicado';
   exception when others then
     if SQLERRM<>'CONVITE_INDISPONIVEL' then raise;end if;
   end;
   -- Familia B
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000003',true);
-  val=public.kids_resgatar_convite_familia(code_b,'Responsavel Artificial B');
+  val=public.kids_resgatar_convite_familia(code_b,'Responsavel Artificial B','11988888882');
   -- Voluntario nao tem acesso a familias, nem criancas.
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000004',true);
   begin
@@ -66,6 +75,8 @@ begin
   end;
   select count(*) into n from public.familias_kids;
   if n<>0 then raise exception 'ERRO: voluntario viu familias';end if;
+  select count(*) into n from public.kids_familias_revisao();
+  if n<>0 then raise exception 'ERRO: voluntario consultou telefones de familias';end if;
   begin
     perform * from public.kids_criar_crianca('Crianca de voluntario','2021-01-01',
       '99999999-9999-4999-8999-000000000001','QA_PR2_DEMO');
@@ -77,6 +88,9 @@ begin
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000001',true);
   val=public.kids_aprovar_familia('88888888-8888-4888-8888-000000000002');
   val=public.kids_aprovar_familia('88888888-8888-4888-8888-000000000003');
+  select count(*) into n from public.kids_familias_revisao()
+    where telefone in ('11988888881','11988888882');
+  if n<>2 then raise exception 'ERRO: lideranca nao consegue revisar contato autorizado';end if;
   -- A escala da turma é escrita atomicamente, mesmo sem conceder acesso infantil fora do dia.
   escalado=public.kids_publicar_escala_turma(
     '88888888-8888-4888-8888-000000000004',
@@ -85,6 +99,14 @@ begin
   if not exists(select 1 from public.escalas_turmas_kids
       where escala_id=escalado and turma_id='99999999-9999-4999-8999-000000000001')
     then raise exception 'ERRO: escala sem mapeamento UUID';end if;
+  -- Classificação é feita no servidor: idade não pode ser forçada para outra turma.
+  begin
+    perform * from public.kids_criar_crianca('Turma incorreta','2020-01-01',
+      '99999999-9999-4999-8999-000000000001','QA_PR2_DEMO');
+    raise exception 'ERRO: idade direcionada a turma incorreta';
+  exception when others then
+    if SQLERRM<>'TURMA_NAO_CORRESPONDE_IDADE' then raise;end if;
+  end;
   -- Familia A cria filho, ainda aguardando equipe.
   perform pg_catalog.set_config('request.jwt.claim.sub','88888888-8888-4888-8888-000000000002',true);
   begin
